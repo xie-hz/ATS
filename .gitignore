@@ -30,3 +30,5 @@ backend/app/uploads/
 
 # OS
 .DS_Store
+
+.tanstack
