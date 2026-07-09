@@ -5,3 +5,28 @@ node_modules/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.pytest_cache/
+celerybeat-schedule*
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# Uploads
+backend/app/uploads/
+
+# OS
+.DS_Store
