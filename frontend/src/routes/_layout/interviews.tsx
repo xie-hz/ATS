@@ -156,7 +156,7 @@ function InterviewsPage() {
     mutationFn: (id: string) =>
       AdminInterviewsService.cancelInterview({ interviewId: id }),
     onSuccess: () => {
-      showSuccessToast("已取消")
+      showSuccessToast(t("common.cancelled"))
       queryClient.invalidateQueries({ queryKey: ["interviews"] })
     },
     onError: handleError.bind(showErrorToast),

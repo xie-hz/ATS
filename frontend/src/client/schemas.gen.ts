@@ -41,6 +41,16 @@ export const AnalyticsSummarySchema = {
             type: 'number',
             title: 'Conversion Rate',
             default: 0
+        },
+        pending_candidates: {
+            type: 'integer',
+            title: 'Pending Candidates',
+            default: 0
+        },
+        pending_feedback: {
+            type: 'integer',
+            title: 'Pending Feedback',
+            default: 0
         }
     },
     type: 'object',
@@ -314,6 +324,125 @@ export const BatchAdvanceSchema = {
     type: 'object',
     required: ['application_ids', 'target_stage'],
     title: 'BatchAdvance'
+} as const;
+
+export const BatchInterviewCreateSchema = {
+    properties: {
+        application_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            title: 'Application Ids'
+        },
+        interviewer_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Interviewer Id'
+        },
+        round: {
+            type: 'integer',
+            minimum: 1,
+            title: 'Round',
+            default: 1
+        },
+        scheduled_time: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Scheduled Time'
+        },
+        interval_minutes: {
+            type: 'integer',
+            minimum: 1,
+            title: 'Interval Minutes',
+            default: 60
+        }
+    },
+    type: 'object',
+    required: ['application_ids', 'interviewer_id', 'scheduled_time'],
+    title: 'BatchInterviewCreate',
+    description: `§16 batch invite: schedule one interview per selected application.
+
+Interviews are spaced \`interval_minutes\` apart starting from
+\`scheduled_time\` so a single interviewer gets back-to-back slots without
+tripping the ±30 min conflict check.`
+} as const;
+
+export const BatchInterviewErrorSchema = {
+    properties: {
+        application_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Application Id'
+        },
+        detail: {
+            type: 'string',
+            title: 'Detail'
+        }
+    },
+    type: 'object',
+    required: ['application_id', 'detail'],
+    title: 'BatchInterviewError'
+} as const;
+
+export const BatchInterviewResultSchema = {
+    properties: {
+        created: {
+            items: {
+                '$ref': '#/components/schemas/InterviewPublic'
+            },
+            type: 'array',
+            title: 'Created'
+        },
+        errors: {
+            items: {
+                '$ref': '#/components/schemas/BatchInterviewError'
+            },
+            type: 'array',
+            title: 'Errors'
+        }
+    },
+    type: 'object',
+    title: 'BatchInterviewResult'
+} as const;
+
+export const BatchNotifySchema = {
+    properties: {
+        application_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            title: 'Application Ids'
+        },
+        message: {
+            type: 'string',
+            title: 'Message'
+        }
+    },
+    type: 'object',
+    required: ['application_ids', 'message'],
+    title: 'BatchNotify',
+    description: "§16 batch notify: send an in-app message to each application's owner."
+} as const;
+
+export const BatchNotifyResultSchema = {
+    properties: {
+        notified: {
+            type: 'integer',
+            title: 'Notified',
+            default: 0
+        },
+        skipped: {
+            type: 'integer',
+            title: 'Skipped',
+            default: 0
+        }
+    },
+    type: 'object',
+    title: 'BatchNotifyResult'
 } as const;
 
 export const Body_admin_auth_loginSchema = {
@@ -707,6 +836,19 @@ export const FeedbackPublicSchema = {
     title: 'FeedbackPublic'
 } as const;
 
+export const FileUrlSchema = {
+    properties: {
+        url: {
+            type: 'string',
+            title: 'Url'
+        }
+    },
+    type: 'object',
+    required: ['url'],
+    title: 'FileUrl',
+    description: 'Resolved download URL for a stored file (resume, attachment).'
+} as const;
+
 export const HTTPValidationErrorSchema = {
     properties: {
         detail: {
@@ -806,8 +948,51 @@ export const InterviewPublicSchema = {
 
 export const InterviewStatusSchema = {
     type: 'string',
-    enum: ['SCHEDULED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'],
+    enum: ['SCHEDULED', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'REJECTED'],
     title: 'InterviewStatus'
+} as const;
+
+export const InterviewUpdateSchema = {
+    properties: {
+        interviewer_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Interviewer Id'
+        },
+        round: {
+            anyOf: [
+                {
+                    type: 'integer',
+                    minimum: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Round'
+        },
+        scheduled_time: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Scheduled Time'
+        }
+    },
+    type: 'object',
+    title: 'InterviewUpdate'
 } as const;
 
 export const InterviewsPublicSchema = {
@@ -1479,6 +1664,72 @@ export const PortalApplicationSubmitSchema = {
     type: 'object',
     required: ['job_id', 'name', 'email'],
     title: 'PortalApplicationSubmit'
+} as const;
+
+export const PortalProfileSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        email: {
+            type: 'string',
+            title: 'Email'
+        },
+        phone: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Phone'
+        },
+        resume_url: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Resume Url'
+        }
+    },
+    type: 'object',
+    required: ['name', 'email'],
+    title: 'PortalProfile',
+    description: "The candidate's own profile, as seen from the portal."
+} as const;
+
+export const PortalProfileUpdateSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 100,
+            minLength: 1,
+            title: 'Name'
+        },
+        phone: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 32
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Phone'
+        }
+    },
+    type: 'object',
+    required: ['name'],
+    title: 'PortalProfileUpdate',
+    description: 'Editable profile fields. Email is the login identity -> read-only.'
 } as const;
 
 export const PortalTokenSchema = {

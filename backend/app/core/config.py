@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET: str = "ats"
     MINIO_SECURE: bool = False
+    # File storage backend: "local" (disk, default) or "minio". When "minio" is
+    # selected but the server is unreachable at startup, we fall back to "local"
+    # with a warning so uploads never hard-fail on a misconfigured environment.
+    STORAGE_BACKEND: str = "local"
 
     SMTP_TLS: bool = True
     SMTP_SSL: bool = False

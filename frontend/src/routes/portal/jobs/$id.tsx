@@ -1,13 +1,18 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
-import { useState } from "react"
+import { createFileRoute, Link } from "@tanstack/react-router"
+import { useEffect, useState } from "react"
 
-import { PortalApplicationsService, PortalJobsService } from "@/client"
+import {
+  PortalApplicationsService,
+  PortalJobsService,
+  PortalProfileService,
+} from "@/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { useI18n } from "@/contexts/i18n"
+import { usePortalAuth } from "@/contexts/portal-auth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
 
@@ -20,9 +25,17 @@ function PortalJobDetail() {
   const { id } = Route.useParams()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const { t } = useI18n()
+  const { isAuthenticated, email: authEmail } = usePortalAuth()
   const { data: job } = useQuery({
     queryKey: ["portal-job", id],
     queryFn: () => PortalJobsService.getPortalJob({ jobId: id }),
+  })
+
+  // When logged in, pre-fill name/phone from the candidate's saved profile.
+  const { data: profile } = useQuery({
+    queryKey: ["portal-me"],
+    queryFn: () => PortalProfileService.getMyProfile(),
+    enabled: isAuthenticated,
   })
 
   const [name, setName] = useState("")
@@ -30,10 +43,23 @@ function PortalJobDetail() {
   const [phone, setPhone] = useState("")
   const [submitted, setSubmitted] = useState(false)
 
+  useEffect(() => {
+    if (profile) {
+      setName(profile.name ?? "")
+      setPhone(profile.phone ?? "")
+    }
+  }, [profile])
+
   const mutation = useMutation({
     mutationFn: () =>
       PortalApplicationsService.submitApplication({
-        requestBody: { job_id: id, name, email, phone },
+        requestBody: {
+          job_id: id,
+          name,
+          // Email is the login identity: read-only when logged in.
+          email: isAuthenticated ? (authEmail ?? email) : email,
+          phone,
+        },
       }),
     onSuccess: () => {
       showSuccessToast(t("portal.submitApplication"))
@@ -71,12 +97,22 @@ function PortalJobDetail() {
       {submitted ? (
         <div className="rounded-lg border p-6 text-center space-y-3">
           <p className="font-medium">{t("portal.applicationSubmitted")}</p>
-          <p className="text-sm text-muted-foreground">
-            {t("portal.trackHint")}
-          </p>
-          <Button asChild>
-            <a href="/portal/login">{t("portal.signInToTrack")}</a>
-          </Button>
+          {isAuthenticated ? (
+            <Button asChild>
+              <Link to="/portal/applications">
+                {t("portal.myApplications")}
+              </Link>
+            </Button>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {t("portal.trackHint")}
+              </p>
+              <Button asChild>
+                <Link to="/portal/login">{t("portal.signInToTrack")}</Link>
+              </Button>
+            </>
+          )}
         </div>
       ) : (
         <div className="rounded-lg border p-6 space-y-4 max-w-md">
@@ -89,8 +125,9 @@ function PortalJobDetail() {
             <Label>{t("candidates.email")}</Label>
             <Input
               type="email"
-              value={email}
+              value={isAuthenticated ? (authEmail ?? "") : email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={isAuthenticated}
             />
           </div>
           <div className="space-y-1.5">
@@ -101,7 +138,7 @@ function PortalJobDetail() {
             loading={mutation.isPending}
             onClick={() => mutation.mutate()}
             className="w-full"
-            disabled={!name || !email}
+            disabled={!name || (!isAuthenticated && !email)}
           >
             {t("portal.submitApplication")}
           </LoadingButton>

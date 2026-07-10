@@ -1,7 +1,6 @@
-"""Admin candidate management + resume upload (local storage, phase 1)."""
+"""Admin candidate management + resume upload (storage-service backed)."""
 
 import uuid
-from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, UploadFile
@@ -13,13 +12,12 @@ from app.models import (
     CandidatePublic,
     CandidatesPublic,
     CandidateUpdate,
+    FileUrl,
     User,
 )
-from app.services import candidate_service
+from app.services import candidate_service, storage_service
 
 router = APIRouter(prefix="/admin/candidates", tags=["admin-candidates"])
-
-UPLOAD_DIR = Path("uploads")
 
 
 @router.get("/", response_model=CandidatesPublic)
@@ -93,15 +91,43 @@ def upload_resume(
     candidate_id: uuid.UUID,
     file: UploadFile,
 ) -> Any:
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    filename_part = (file.filename or "resume").rsplit(".", 1)[-1]
-    ext = filename_part if filename_part and "." in (file.filename or "") else "bin"
-    filename = f"{candidate_id}_{uuid.uuid4().hex}.{ext}"
-    (UPLOAD_DIR / filename).write_bytes(file.file.read())
+    data = file.file.read()
+    ext_part = (file.filename or "resume").rsplit(".", 1)[-1]
+    ext = ext_part if "." in (file.filename or "") else "bin"
+    key = storage_service.save_upload(
+        data, content_type=file.content_type or "application/octet-stream", ext=ext
+    )
     candidate = candidate_service.set_resume_url(
         session=session,
         user=current_user,
         candidate_id=candidate_id,
-        resume_url=f"/uploads/{filename}",
+        resume_url=key,  # storage key; resolved via the download endpoint
     )
     return CandidatePublic.model_validate(candidate)
+
+
+@router.get(
+    "/{candidate_id}/resume",
+    response_model=FileUrl,
+    dependencies=[Depends(require_permission(Permissions.CANDIDATE_READ))],
+)
+def download_resume(
+    session: SessionDep,
+    current_user: Annotated[User, Depends(require_permission(Permissions.CANDIDATE_READ))],
+    candidate_id: uuid.UUID,
+) -> Any:
+    """Resolve the resume to a directly-openable URL.
+
+    Local backend: a path under the public `/uploads` mount.
+    MinIO backend: a fresh presigned URL (so stored keys never expire).
+    """
+    candidate = candidate_service.get_candidate(
+        session=session,
+        user=current_user,
+        candidate_id=candidate_id,
+    )
+    if not candidate.resume_url:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="No resume on file")
+    return FileUrl(url=storage_service.serve_file(candidate.resume_url))

@@ -11,6 +11,7 @@ import { AdminAuthService, ApiError, OpenAPI } from "./client"
 import { ThemeProvider } from "./components/theme-provider"
 import { Toaster } from "./components/ui/sonner"
 import { I18nProvider } from "./contexts/i18n"
+import { PortalAuthProvider } from "./contexts/portal-auth"
 import "./index.css"
 import { routeTree } from "./routeTree.gen"
 
@@ -68,12 +69,14 @@ declare module "@tanstack/react-router" {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <I18nProvider>
-      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-        <QueryClientProvider client={queryClient}>
-          <RouterProvider router={router} />
-          <Toaster richColors closeButton />
-        </QueryClientProvider>
-      </ThemeProvider>
+      <PortalAuthProvider>
+        <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+          <QueryClientProvider client={queryClient}>
+            <RouterProvider router={router} />
+            <Toaster richColors closeButton />
+          </QueryClientProvider>
+        </ThemeProvider>
+      </PortalAuthProvider>
     </I18nProvider>
   </StrictMode>,
 )

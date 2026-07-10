@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminAnalyticsGetSummaryResponse, AdminApplicationsBatchAdvanceData, AdminApplicationsBatchAdvanceResponse, AdminApplicationsCreateApplicationData, AdminApplicationsCreateApplicationResponse, AdminApplicationsListApplicationsData, AdminApplicationsListApplicationsResponse, AdminApplicationsGetApplicationData, AdminApplicationsGetApplicationResponse, AdminApplicationsAdvanceApplicationData, AdminApplicationsAdvanceApplicationResponse, AdminApplicationsRejectApplicationData, AdminApplicationsRejectApplicationResponse, AdminApplicationsRestoreApplicationData, AdminApplicationsRestoreApplicationResponse, AdminAuditLogsListAuditLogsData, AdminAuditLogsListAuditLogsResponse, AdminAuthLoginData, AdminAuthLoginResponse, AdminAuthRefreshTokenData, AdminAuthRefreshTokenResponse, AdminCandidatesListCandidatesData, AdminCandidatesListCandidatesResponse, AdminCandidatesCreateCandidateData, AdminCandidatesCreateCandidateResponse, AdminCandidatesGetCandidateData, AdminCandidatesGetCandidateResponse, AdminCandidatesUpdateCandidateData, AdminCandidatesUpdateCandidateResponse, AdminCandidatesUploadResumeData, AdminCandidatesUploadResumeResponse, AdminInterviewsListCalendarResponse, AdminInterviewsListInterviewsData, AdminInterviewsListInterviewsResponse, AdminInterviewsCreateInterviewData, AdminInterviewsCreateInterviewResponse, AdminInterviewsGetInterviewData, AdminInterviewsGetInterviewResponse, AdminInterviewsGetFeedbackData, AdminInterviewsGetFeedbackResponse, AdminInterviewsSubmitFeedbackData, AdminInterviewsSubmitFeedbackResponse, AdminInterviewsCancelInterviewData, AdminInterviewsCancelInterviewResponse, AdminJobsListJobsData, AdminJobsListJobsResponse, AdminJobsCreateJobData, AdminJobsCreateJobResponse, AdminJobsGetJobData, AdminJobsGetJobResponse, AdminJobsUpdateJobData, AdminJobsUpdateJobResponse, AdminJobsDeleteJobData, AdminJobsDeleteJobResponse, AdminJobsPublishJobData, AdminJobsPublishJobResponse, AdminJobsCloseJobData, AdminJobsCloseJobResponse, AdminJobsReopenJobData, AdminJobsReopenJobResponse, AdminNotificationsListNotificationsData, AdminNotificationsListNotificationsResponse, AdminNotificationsMarkReadData, AdminNotificationsMarkReadResponse, AdminNotificationsMarkAllReadResponse, AdminOffersListOffersData, AdminOffersListOffersResponse, AdminOffersCreateOfferData, AdminOffersCreateOfferResponse, AdminOffersGetOfferData, AdminOffersGetOfferResponse, AdminOffersUpdateOfferData, AdminOffersUpdateOfferResponse, AdminOffersSubmitOfferData, AdminOffersSubmitOfferResponse, AdminOffersApproveOfferData, AdminOffersApproveOfferResponse, AdminOffersSendOfferData, AdminOffersSendOfferResponse, AdminOffersCancelOfferData, AdminOffersCancelOfferResponse, AdminUsersReadUserMeResponse, AdminUsersUpdateUserMeData, AdminUsersUpdateUserMeResponse, AdminUsersUpdatePasswordMeData, AdminUsersUpdatePasswordMeResponse, AdminUsersListUsersData, AdminUsersListUsersResponse, AdminUsersCreateUserData, AdminUsersCreateUserResponse, AdminUsersGetUserData, AdminUsersGetUserResponse, AdminUsersUpdateUserData, AdminUsersUpdateUserResponse, HealthHealthResponse, PortalApplicationsListMyApplicationsResponse, PortalApplicationsSubmitApplicationData, PortalApplicationsSubmitApplicationResponse, PortalApplicationsGetMyApplicationData, PortalApplicationsGetMyApplicationResponse, PortalAuthSendCodeData, PortalAuthSendCodeResponse, PortalAuthVerifyCodeData, PortalAuthVerifyCodeResponse, PortalJobsListPortalJobsData, PortalJobsListPortalJobsResponse, PortalJobsGetPortalJobData, PortalJobsGetPortalJobResponse, PortalOffersListMyOffersResponse, PortalOffersGetMyOfferData, PortalOffersGetMyOfferResponse, PortalOffersAcceptOfferData, PortalOffersAcceptOfferResponse, PortalOffersRejectOfferData, PortalOffersRejectOfferResponse } from './types.gen';
+import type { AdminAnalyticsGetSummaryResponse, AdminApplicationsBatchAdvanceData, AdminApplicationsBatchAdvanceResponse, AdminApplicationsBatchNotifyData, AdminApplicationsBatchNotifyResponse, AdminApplicationsCreateApplicationData, AdminApplicationsCreateApplicationResponse, AdminApplicationsListApplicationsData, AdminApplicationsListApplicationsResponse, AdminApplicationsGetApplicationData, AdminApplicationsGetApplicationResponse, AdminApplicationsAdvanceApplicationData, AdminApplicationsAdvanceApplicationResponse, AdminApplicationsRejectApplicationData, AdminApplicationsRejectApplicationResponse, AdminApplicationsRestoreApplicationData, AdminApplicationsRestoreApplicationResponse, AdminAuditLogsListAuditLogsData, AdminAuditLogsListAuditLogsResponse, AdminAuthLoginData, AdminAuthLoginResponse, AdminAuthRefreshTokenData, AdminAuthRefreshTokenResponse, AdminCandidatesListCandidatesData, AdminCandidatesListCandidatesResponse, AdminCandidatesCreateCandidateData, AdminCandidatesCreateCandidateResponse, AdminCandidatesGetCandidateData, AdminCandidatesGetCandidateResponse, AdminCandidatesUpdateCandidateData, AdminCandidatesUpdateCandidateResponse, AdminCandidatesUploadResumeData, AdminCandidatesUploadResumeResponse, AdminCandidatesDownloadResumeData, AdminCandidatesDownloadResumeResponse, AdminInterviewsListCalendarResponse, AdminInterviewsListInterviewsData, AdminInterviewsListInterviewsResponse, AdminInterviewsCreateInterviewData, AdminInterviewsCreateInterviewResponse, AdminInterviewsBatchCreateInterviewsData, AdminInterviewsBatchCreateInterviewsResponse, AdminInterviewsGetInterviewData, AdminInterviewsGetInterviewResponse, AdminInterviewsUpdateInterviewData, AdminInterviewsUpdateInterviewResponse, AdminInterviewsGetFeedbackData, AdminInterviewsGetFeedbackResponse, AdminInterviewsSubmitFeedbackData, AdminInterviewsSubmitFeedbackResponse, AdminInterviewsCancelInterviewData, AdminInterviewsCancelInterviewResponse, AdminJobsListJobsData, AdminJobsListJobsResponse, AdminJobsCreateJobData, AdminJobsCreateJobResponse, AdminJobsGetJobData, AdminJobsGetJobResponse, AdminJobsUpdateJobData, AdminJobsUpdateJobResponse, AdminJobsDeleteJobData, AdminJobsDeleteJobResponse, AdminJobsPublishJobData, AdminJobsPublishJobResponse, AdminJobsCloseJobData, AdminJobsCloseJobResponse, AdminJobsReopenJobData, AdminJobsReopenJobResponse, AdminNotificationsListNotificationsData, AdminNotificationsListNotificationsResponse, AdminNotificationsMarkReadData, AdminNotificationsMarkReadResponse, AdminNotificationsMarkAllReadResponse, AdminOffersListOffersData, AdminOffersListOffersResponse, AdminOffersCreateOfferData, AdminOffersCreateOfferResponse, AdminOffersGetOfferData, AdminOffersGetOfferResponse, AdminOffersUpdateOfferData, AdminOffersUpdateOfferResponse, AdminOffersSubmitOfferData, AdminOffersSubmitOfferResponse, AdminOffersApproveOfferData, AdminOffersApproveOfferResponse, AdminOffersSendOfferData, AdminOffersSendOfferResponse, AdminOffersCancelOfferData, AdminOffersCancelOfferResponse, AdminUsersReadUserMeResponse, AdminUsersUpdateUserMeData, AdminUsersUpdateUserMeResponse, AdminUsersUpdatePasswordMeData, AdminUsersUpdatePasswordMeResponse, AdminUsersListUsersData, AdminUsersListUsersResponse, AdminUsersCreateUserData, AdminUsersCreateUserResponse, AdminUsersGetUserData, AdminUsersGetUserResponse, AdminUsersUpdateUserData, AdminUsersUpdateUserResponse, HealthHealthResponse, PortalApplicationsListMyApplicationsResponse, PortalApplicationsSubmitApplicationData, PortalApplicationsSubmitApplicationResponse, PortalApplicationsGetMyApplicationData, PortalApplicationsGetMyApplicationResponse, PortalAuthSendCodeData, PortalAuthSendCodeResponse, PortalAuthVerifyCodeData, PortalAuthVerifyCodeResponse, PortalJobsListPortalJobsData, PortalJobsListPortalJobsResponse, PortalJobsGetPortalJobData, PortalJobsGetPortalJobResponse, PortalOffersListMyOffersResponse, PortalOffersGetMyOfferData, PortalOffersGetMyOfferResponse, PortalOffersAcceptOfferData, PortalOffersAcceptOfferResponse, PortalOffersRejectOfferData, PortalOffersRejectOfferResponse, PortalProfileGetMyProfileResponse, PortalProfileUpdateMyProfileData, PortalProfileUpdateMyProfileResponse } from './types.gen';
 
 export class AdminAnalyticsService {
     /**
@@ -32,6 +32,26 @@ export class AdminApplicationsService {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/v1/admin/applications/batch-advance',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Batch Notify
+     * §16 batch notify: send an in-app message to each application's owner.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns BatchNotifyResult Successful Response
+     * @throws ApiError
+     */
+    public static batchNotify(data: AdminApplicationsBatchNotifyData): CancelablePromise<AdminApplicationsBatchNotifyResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/admin/applications/batch-notify',
             body: data.requestBody,
             mediaType: 'application/json',
             errors: {
@@ -349,6 +369,30 @@ export class AdminCandidatesService {
             }
         });
     }
+    
+    /**
+     * Download Resume
+     * Resolve the resume to a directly-openable URL.
+     *
+     * Local backend: a path under the public `/uploads` mount.
+     * MinIO backend: a fresh presigned URL (so stored keys never expire).
+     * @param data The data for the request.
+     * @param data.candidateId
+     * @returns FileUrl Successful Response
+     * @throws ApiError
+     */
+    public static downloadResume(data: AdminCandidatesDownloadResumeData): CancelablePromise<AdminCandidatesDownloadResumeResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/admin/candidates/{candidate_id}/resume',
+            path: {
+                candidate_id: data.candidateId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
 }
 
 export class AdminInterviewsService {
@@ -408,6 +452,26 @@ export class AdminInterviewsService {
     }
     
     /**
+     * Batch Create Interviews
+     * §16 batch invite: schedule one interview per selected application.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns BatchInterviewResult Successful Response
+     * @throws ApiError
+     */
+    public static batchCreateInterviews(data: AdminInterviewsBatchCreateInterviewsData): CancelablePromise<AdminInterviewsBatchCreateInterviewsResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/admin/interviews/batch',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
      * Get Interview
      * @param data The data for the request.
      * @param data.interviewId
@@ -421,6 +485,30 @@ export class AdminInterviewsService {
             path: {
                 interview_id: data.interviewId
             },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Interview
+     * Update a scheduled interview (time, interviewer, round).
+     * @param data The data for the request.
+     * @param data.interviewId
+     * @param data.requestBody
+     * @returns InterviewPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateInterview(data: AdminInterviewsUpdateInterviewData): CancelablePromise<AdminInterviewsUpdateInterviewResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/admin/interviews/{interview_id}',
+            path: {
+                interview_id: data.interviewId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
             errors: {
                 422: 'Validation Error'
             }
@@ -1243,6 +1331,39 @@ export class PortalOffersService {
             path: {
                 offer_id: data.offerId
             },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class PortalProfileService {
+    /**
+     * Get My Profile
+     * @returns PortalProfile Successful Response
+     * @throws ApiError
+     */
+    public static getMyProfile(): CancelablePromise<PortalProfileGetMyProfileResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/portal/me/'
+        });
+    }
+    
+    /**
+     * Update My Profile
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns PortalProfile Successful Response
+     * @throws ApiError
+     */
+    public static updateMyProfile(data: PortalProfileUpdateMyProfileData): CancelablePromise<PortalProfileUpdateMyProfileResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/portal/me/',
+            body: data.requestBody,
+            mediaType: 'application/json',
             errors: {
                 422: 'Validation Error'
             }

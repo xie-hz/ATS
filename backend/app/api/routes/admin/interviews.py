@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import SessionDep, require_permission
 from app.core.permissions import Permissions
 from app.models import (
+    BatchInterviewCreate,
+    BatchInterviewResult,
     FeedbackCreate,
     FeedbackPublic,
     InterviewCreate,
@@ -60,6 +62,21 @@ def create_interview(
         session=session, interview_in=interview_in
     )
     return InterviewPublic.model_validate(iv)
+
+
+@router.post(
+    "/batch",
+    response_model=BatchInterviewResult,
+    dependencies=[Depends(require_permission(Permissions.INTERVIEW_CREATE))],
+)
+def batch_create_interviews(
+    session: SessionDep,
+    batch_in: BatchInterviewCreate,
+) -> Any:
+    """§16 batch invite: schedule one interview per selected application."""
+    return interview_service.batch_create_interviews(
+        session=session, batch_in=batch_in
+    )
 
 
 @router.get("/{interview_id}", response_model=InterviewPublic)

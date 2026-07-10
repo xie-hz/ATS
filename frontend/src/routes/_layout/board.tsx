@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
+import { Textarea } from "@/components/ui/textarea"
 import { useI18n } from "@/contexts/i18n"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
@@ -73,15 +74,30 @@ function BoardPage() {
   const interviewers =
     usersData?.data?.filter((u) => u.roles?.includes("interviewer")) ?? []
 
-  // Map: application_id -> latest interview status
+  // Per-application interview status. Priority: SCHEDULED (pending action) >
+  // COMPLETED (awaiting decision) > CANCELLED/NO_SHOW/REJECTED. Picking purely
+  // the latest-by-time interview can land on a REJECTED/CANCELLED one and hide
+  // every button, so we prefer active statuses.
+  const STATUS_PRIORITY: Record<string, number> = {
+    SCHEDULED: 3,
+    COMPLETED: 2,
+    CANCELLED: 1,
+    NO_SHOW: 1,
+    REJECTED: 1,
+  }
   const ivStatusByApp = new Map<string, InterviewStatus>()
   const ivScoreByApp = new Map<string, number>()
   const ivRecommendByApp = new Map<string, boolean>()
-  const ivIdByApp = new Map<string, string>()
+  const ivIdByApp = new Map<string, string>() // a COMPLETED interview id, for 详情
   ivData?.data?.forEach((iv) => {
-    if (!ivStatusByApp.has(iv.application_id)) {
-      ivStatusByApp.set(iv.application_id, iv.status)
-      ivIdByApp.set(iv.application_id, iv.id)
+    const aid = iv.application_id
+    // First COMPLETED in the list = latest completed by scheduled_time desc.
+    if (iv.status === "COMPLETED" && !ivIdByApp.has(aid)) {
+      ivIdByApp.set(aid, iv.id)
+    }
+    const cur = ivStatusByApp.get(aid)
+    if (!cur || STATUS_PRIORITY[iv.status] > STATUS_PRIORITY[cur]) {
+      ivStatusByApp.set(aid, iv.status)
     }
   })
   // Fetch feedback for COMPLETED interviews to show score/recommend on cards
@@ -93,9 +109,8 @@ function BoardPage() {
   const { data: allFeedback } = useQuery({
     queryKey: ["board-feedback", completedIvIds],
     queryFn: async () => {
-      const completed = ivData?.data?.filter(
-        (i) => i.status === "COMPLETED",
-      ) ?? []
+      const completed =
+        ivData?.data?.filter((i) => i.status === "COMPLETED") ?? []
       const results: Record<string, { score: number; recommend: boolean }> = {}
       const seen = new Set<string>()
       for (const iv of completed) {
@@ -233,6 +248,13 @@ function BoardPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [batchOpen, setBatchOpen] = useState(false)
   const [batchTarget, setBatchTarget] = useState<ApplicationStage>("SCREENING")
+  const [batchInviteOpen, setBatchInviteOpen] = useState(false)
+  const [biInterviewerId, setBiInterviewerId] = useState("")
+  const [biRound, setBiRound] = useState(1)
+  const [biStartTime, setBiStartTime] = useState("")
+  const [biInterval, setBiInterval] = useState(60)
+  const [batchNotifyOpen, setBatchNotifyOpen] = useState(false)
+  const [notifyMessage, setNotifyMessage] = useState("")
 
   const batchAdvanceMutation = useMutation({
     mutationFn: ({
@@ -260,6 +282,62 @@ function BoardPage() {
       queryClient.invalidateQueries({ queryKey: ["applications"] })
       setSelectedIds(new Set())
       setBatchOpen(false)
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
+  const batchInviteMutation = useMutation({
+    mutationFn: (data: {
+      ids: string[]
+      interviewerId: string
+      round: number
+      startTime: string
+      interval: number
+    }) =>
+      AdminInterviewsService.batchCreateInterviews({
+        requestBody: {
+          application_ids: data.ids,
+          interviewer_id: data.interviewerId,
+          round: data.round,
+          scheduled_time: new Date(data.startTime).toISOString(),
+          interval_minutes: data.interval,
+        },
+      }),
+    onSuccess: (res) => {
+      const created = res.created ?? []
+      const errs = res.errors?.length ?? 0
+      if (created.length === 0) {
+        showErrorToast(`全部失败（${errs} 个）`)
+      } else {
+        showSuccessToast(
+          errs > 0
+            ? `${t("board.invited", { n: created.length })}，失败 ${errs} 个`
+            : t("board.invited", { n: created.length }),
+        )
+      }
+      queryClient.invalidateQueries({ queryKey: ["applications"] })
+      queryClient.invalidateQueries({ queryKey: ["interviews"] })
+      setSelectedIds(new Set())
+      setBatchInviteOpen(false)
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
+  const batchNotifyMutation = useMutation({
+    mutationFn: (data: { ids: string[]; message: string }) =>
+      AdminApplicationsService.batchNotify({
+        requestBody: { application_ids: data.ids, message: data.message },
+      }),
+    onSuccess: (res) => {
+      showSuccessToast(
+        t("board.notified", {
+          n: res.notified ?? 0,
+          skipped: res.skipped ?? 0,
+        }),
+      )
+      setSelectedIds(new Set())
+      setBatchNotifyOpen(false)
+      setNotifyMessage("")
     },
     onError: handleError.bind(showErrorToast),
   })
@@ -307,66 +385,182 @@ function BoardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t("board.title")}</h1>
-        <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
-          <Button
-            variant="outline"
-            disabled={selectedIds.size === 0}
-            onClick={() => setBatchOpen(true)}
-          >
-            {t("board.advance")} ({selectedIds.size})
-          </Button>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>{t("board.advance")}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <Label>{t("common.status")}</Label>
-                <select
-                  className={selectClass}
-                  value={batchTarget}
-                  onChange={(e) =>
-                    setBatchTarget(e.target.value as ApplicationStage)
+        <div className="flex flex-wrap gap-2">
+          <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
+            <Button
+              variant="outline"
+              disabled={selectedIds.size === 0}
+              onClick={() => setBatchOpen(true)}
+            >
+              {t("board.advance")} ({selectedIds.size})
+            </Button>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>{t("board.advance")}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>{t("common.status")}</Label>
+                  <select
+                    className={selectClass}
+                    value={batchTarget}
+                    onChange={(e) =>
+                      setBatchTarget(e.target.value as ApplicationStage)
+                    }
+                  >
+                    <option value="APPLIED">APPLIED</option>
+                    <option value="SCREENING">SCREENING</option>
+                    <option value="INTERVIEW">INTERVIEW</option>
+                    <option value="OFFER">OFFER</option>
+                    <option value="HIRED">HIRED</option>
+                  </select>
+                </div>
+                <Button
+                  className="w-full"
+                  disabled={batchAdvanceMutation.isPending}
+                  onClick={() =>
+                    batchAdvanceMutation.mutate({
+                      ids: Array.from(selectedIds),
+                      target: batchTarget,
+                    })
                   }
                 >
-                  <option value="APPLIED">APPLIED</option>
-                  <option value="SCREENING">SCREENING</option>
-                  <option value="INTERVIEW">INTERVIEW</option>
-                  <option value="OFFER">OFFER</option>
-                  <option value="HIRED">HIRED</option>
-                </select>
+                  {t("board.advance")}
+                </Button>
               </div>
-              <Button
-                className="w-full"
-                disabled={batchAdvanceMutation.isPending}
-                onClick={() =>
-                  batchAdvanceMutation.mutate({
-                    ids: Array.from(selectedIds),
-                    target: batchTarget,
-                  })
-                }
-              >
-                {t("board.advance")}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={batchInviteOpen} onOpenChange={setBatchInviteOpen}>
+            <Button
+              variant="outline"
+              disabled={selectedIds.size === 0}
+              onClick={() => setBatchInviteOpen(true)}
+            >
+              {t("board.batchInvite")} ({selectedIds.size})
+            </Button>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>{t("board.batchInviteTitle")}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>{t("interviews.interviewer")}</Label>
+                  <select
+                    className={selectClass}
+                    value={biInterviewerId}
+                    onChange={(e) => setBiInterviewerId(e.target.value)}
+                  >
+                    <option value="">...</option>
+                    {interviewers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>{t("interviews.round")}</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={biRound}
+                      onChange={(e) => setBiRound(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>{t("board.interval")}</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={biInterval}
+                      onChange={(e) => setBiInterval(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>{t("board.startTime")}</Label>
+                  <Input
+                    type="datetime-local"
+                    value={biStartTime}
+                    onChange={(e) => setBiStartTime(e.target.value)}
+                  />
+                </div>
+                <LoadingButton
+                  loading={batchInviteMutation.isPending}
+                  className="w-full"
+                  disabled={!biInterviewerId || !biStartTime}
+                  onClick={() =>
+                    batchInviteMutation.mutate({
+                      ids: Array.from(selectedIds),
+                      interviewerId: biInterviewerId,
+                      round: biRound,
+                      startTime: biStartTime,
+                      interval: biInterval,
+                    })
+                  }
+                >
+                  {t("common.create")}
+                </LoadingButton>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={batchNotifyOpen} onOpenChange={setBatchNotifyOpen}>
+            <Button
+              variant="outline"
+              disabled={selectedIds.size === 0}
+              onClick={() => setBatchNotifyOpen(true)}
+            >
+              {t("board.batchNotify")} ({selectedIds.size})
+            </Button>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>{t("board.batchNotifyTitle")}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>{t("board.notifyMessage")}</Label>
+                  <Textarea
+                    rows={4}
+                    value={notifyMessage}
+                    onChange={(e) => setNotifyMessage(e.target.value)}
+                  />
+                </div>
+                <LoadingButton
+                  loading={batchNotifyMutation.isPending}
+                  className="w-full"
+                  disabled={!notifyMessage.trim()}
+                  onClick={() =>
+                    batchNotifyMutation.mutate({
+                      ids: Array.from(selectedIds),
+                      message: notifyMessage,
+                    })
+                  }
+                >
+                  {t("common.create")}
+                </LoadingButton>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {columns.map((stage) => {
           const items = apps
-          .filter((a) => a.stage === stage)
-          .sort((a, b) => {
-            // 面试中阶段按推荐+分数排序
-            if (stage !== "INTERVIEW") return 0
-            const aRec = ivRecommendByApp.get(a.id) ? 1 : 0
-            const bRec = ivRecommendByApp.get(b.id) ? 1 : 0
-            if (aRec !== bRec) return bRec - aRec
-            const aScore = ivScoreByApp.get(a.id) ?? 0
-            const bScore = ivScoreByApp.get(b.id) ?? 0
-            return bScore - aScore
-          })
+            .filter((a) => a.stage === stage)
+            .sort((a, b) => {
+              // 面试中阶段按推荐+分数排序
+              if (stage !== "INTERVIEW") return 0
+              const aRec = ivRecommendByApp.get(a.id) ? 1 : 0
+              const bRec = ivRecommendByApp.get(b.id) ? 1 : 0
+              if (aRec !== bRec) return bRec - aRec
+              const aScore = ivScoreByApp.get(a.id) ?? 0
+              const bScore = ivScoreByApp.get(b.id) ?? 0
+              return bScore - aScore
+            })
           return (
             <div
               key={stage}
@@ -458,94 +652,95 @@ function BoardPage() {
                           </>
                         )}
 
-                        {/* INTERVIEW + SCHEDULED -> 评价 + 取消 */}
-                        {app.stage === "INTERVIEW" &&
-                          ivStatus === "SCHEDULED" &&
-                          schedIvId && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                onClick={() => {
-                                  setFeedbackIvId(schedIvId)
-                                  setFbScore(0)
-                                  setFbRecommend(false)
-                                  setFbComment("")
-                                }}
-                              >
-                                评价
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 text-xs text-destructive"
-                                disabled={cancelIvMutation.isPending}
-                                onClick={() => {
-                                  if (
-                                    confirm(
-                                      "确认取消该面试？取消后申请将回到筛选阶段",
+                        {/* INTERVIEW: context action + always-available 淘汰 */}
+                        {app.stage === "INTERVIEW" && (
+                          <>
+                            {ivStatus === "SCHEDULED" && schedIvId && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    setFeedbackIvId(schedIvId)
+                                    setFbScore(0)
+                                    setFbRecommend(false)
+                                    setFbComment("")
+                                  }}
+                                >
+                                  {t("board.evaluate")}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs"
+                                  disabled={cancelIvMutation.isPending}
+                                  onClick={() => {
+                                    if (
+                                      confirm(
+                                        "确认取消该面试？取消后申请将回到筛选阶段",
+                                      )
                                     )
-                                  )
-                                    cancelIvMutation.mutate(schedIvId)
-                                }}
-                              >
-                                {t("board.reject")}
-                              </Button>
-                            </>
-                          )}
+                                      cancelIvMutation.mutate(schedIvId)
+                                  }}
+                                >
+                                  {t("board.cancelInterview")}
+                                </Button>
+                              </>
+                            )}
 
-                        {/* INTERVIEW + COMPLETED -> 推进 + 详情 + 淘汰 */}
-                        {app.stage === "INTERVIEW" &&
-                          ivStatus === "COMPLETED" && (
-                            <>
+                            {ivStatus === "COMPLETED" && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  disabled={advanceMutation.isPending}
+                                  onClick={() =>
+                                    advanceMutation.mutate({
+                                      id: app.id,
+                                      target: "OFFER",
+                                    })
+                                  }
+                                >
+                                  {t("board.advance")}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    const ivId = ivIdByApp.get(app.id)
+                                    if (ivId) setDetailIvId(ivId)
+                                  }}
+                                >
+                                  {t("board.detail")}
+                                </Button>
+                              </>
+                            )}
+
+                            {!ivStatus && (
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="h-7 text-xs"
-                                disabled={advanceMutation.isPending}
-                                onClick={() =>
-                                  advanceMutation.mutate({
-                                    id: app.id,
-                                    target: "OFFER",
-                                  })
-                                }
+                                onClick={() => setScheduleAppId(app.id)}
                               >
-                                {t("board.advance")}
+                                {t("board.scheduleInterview")}
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 text-xs"
-                                onClick={() => {
-                                  const ivId = ivIdByApp.get(app.id)
-                                  if (ivId) setDetailIvId(ivId)
-                                }}
-                              >
-                                详情
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 text-xs text-destructive"
-                                disabled={rejectMutation.isPending}
-                                onClick={() => rejectMutation.mutate(app.id)}
-                              >
-                                {t("board.reject")}
-                              </Button>
-                            </>
-                          )}
+                            )}
 
-                        {/* INTERVIEW + no interview -> 安排面试 */}
-                        {app.stage === "INTERVIEW" && !ivStatus && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs"
-                            onClick={() => setScheduleAppId(app.id)}
-                          >
-                            安排面试
-                          </Button>
+                            {/* 淘汰候选人：面试中任意状态都可淘汰 */}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs text-destructive"
+                              disabled={rejectMutation.isPending}
+                              onClick={() => rejectMutation.mutate(app.id)}
+                            >
+                              {t("board.reject")}
+                            </Button>
+                          </>
                         )}
 
                         {/* OFFER -> 推进 + 淘汰 */}

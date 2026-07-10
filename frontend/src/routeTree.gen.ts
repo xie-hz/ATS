@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as PortalIndexRouteImport } from './routes/portal/index'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
+import { Route as PortalProfileRouteImport } from './routes/portal/profile'
 import { Route as PortalLoginRouteImport } from './routes/portal/login'
 import { Route as PortalApplicationsRouteImport } from './routes/portal/applications'
 import { Route as LayoutUsersRouteImport } from './routes/_layout/users'
@@ -53,6 +54,11 @@ const LayoutIndexRoute = LayoutIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => LayoutRoute,
+} as any)
+const PortalProfileRoute = PortalProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => PortalRoute,
 } as any)
 const PortalLoginRoute = PortalLoginRouteImport.update({
   id: '/login',
@@ -145,6 +151,7 @@ export interface FileRoutesByFullPath {
   '/users': typeof LayoutUsersRoute
   '/portal/applications': typeof PortalApplicationsRoute
   '/portal/login': typeof PortalLoginRoute
+  '/portal/profile': typeof PortalProfileRoute
   '/portal/': typeof PortalIndexRoute
   '/applications/$id': typeof LayoutApplicationsIdRoute
   '/candidates/$id': typeof LayoutCandidatesIdRoute
@@ -164,6 +171,7 @@ export interface FileRoutesByTo {
   '/users': typeof LayoutUsersRoute
   '/portal/applications': typeof PortalApplicationsRoute
   '/portal/login': typeof PortalLoginRoute
+  '/portal/profile': typeof PortalProfileRoute
   '/': typeof LayoutIndexRoute
   '/portal': typeof PortalIndexRoute
   '/applications/$id': typeof LayoutApplicationsIdRoute
@@ -187,6 +195,7 @@ export interface FileRoutesById {
   '/_layout/users': typeof LayoutUsersRoute
   '/portal/applications': typeof PortalApplicationsRoute
   '/portal/login': typeof PortalLoginRoute
+  '/portal/profile': typeof PortalProfileRoute
   '/_layout/': typeof LayoutIndexRoute
   '/portal/': typeof PortalIndexRoute
   '/_layout/applications/$id': typeof LayoutApplicationsIdRoute
@@ -211,6 +220,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/portal/applications'
     | '/portal/login'
+    | '/portal/profile'
     | '/portal/'
     | '/applications/$id'
     | '/candidates/$id'
@@ -230,6 +240,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/portal/applications'
     | '/portal/login'
+    | '/portal/profile'
     | '/'
     | '/portal'
     | '/applications/$id'
@@ -252,6 +263,7 @@ export interface FileRouteTypes {
     | '/_layout/users'
     | '/portal/applications'
     | '/portal/login'
+    | '/portal/profile'
     | '/_layout/'
     | '/portal/'
     | '/_layout/applications/$id'
@@ -302,6 +314,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof LayoutIndexRouteImport
       parentRoute: typeof LayoutRoute
+    }
+    '/portal/profile': {
+      id: '/portal/profile'
+      path: '/profile'
+      fullPath: '/portal/profile'
+      preLoaderRoute: typeof PortalProfileRouteImport
+      parentRoute: typeof PortalRoute
     }
     '/portal/login': {
       id: '/portal/login'
@@ -468,6 +487,7 @@ const LayoutRouteWithChildren =
 interface PortalRouteChildren {
   PortalApplicationsRoute: typeof PortalApplicationsRoute
   PortalLoginRoute: typeof PortalLoginRoute
+  PortalProfileRoute: typeof PortalProfileRoute
   PortalIndexRoute: typeof PortalIndexRoute
   PortalJobsIdRoute: typeof PortalJobsIdRoute
 }
@@ -475,6 +495,7 @@ interface PortalRouteChildren {
 const PortalRouteChildren: PortalRouteChildren = {
   PortalApplicationsRoute: PortalApplicationsRoute,
   PortalLoginRoute: PortalLoginRoute,
+  PortalProfileRoute: PortalProfileRoute,
   PortalIndexRoute: PortalIndexRoute,
   PortalJobsIdRoute: PortalJobsIdRoute,
 }

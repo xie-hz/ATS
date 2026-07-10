@@ -11,10 +11,23 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel
 
 import app.models  # noqa: F401  ensure models registered for metadata
+from app.core.config import settings
 from app.core.db import engine, init_db
 from app.main import app
 from tests.utils.user import create_user_with_role, get_engineering_department_id
 from tests.utils.utils import get_superuser_token_headers
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _disable_real_email() -> Generator[None]:
+    """Force-disable SMTP for the whole test session so tests never hit the
+    real mail server configured in .env. Tests that exercise email logic
+    re-enable SMTP per-test via monkeypatch on `settings.SMTP_HOST`.
+    """
+    original = settings.SMTP_HOST
+    settings.SMTP_HOST = None
+    yield
+    settings.SMTP_HOST = original
 
 
 @pytest.fixture(scope="session", autouse=True)

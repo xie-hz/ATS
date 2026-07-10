@@ -13,6 +13,8 @@ export type AnalyticsSummary = {
     };
     hired?: number;
     conversion_rate?: number;
+    pending_candidates?: number;
+    pending_feedback?: number;
 };
 
 export type ApplicationCreate = {
@@ -67,6 +69,44 @@ export type AuditLogsPublic = {
 export type BatchAdvance = {
     application_ids: Array<(string)>;
     target_stage: ApplicationStage;
+};
+
+/**
+ * §16 batch invite: schedule one interview per selected application.
+ *
+ * Interviews are spaced `interval_minutes` apart starting from
+ * `scheduled_time` so a single interviewer gets back-to-back slots without
+ * tripping the ±30 min conflict check.
+ */
+export type BatchInterviewCreate = {
+    application_ids: Array<(string)>;
+    interviewer_id: string;
+    round?: number;
+    scheduled_time: string;
+    interval_minutes?: number;
+};
+
+export type BatchInterviewError = {
+    application_id: string;
+    detail: string;
+};
+
+export type BatchInterviewResult = {
+    created?: Array<InterviewPublic>;
+    errors?: Array<BatchInterviewError>;
+};
+
+/**
+ * §16 batch notify: send an in-app message to each application's owner.
+ */
+export type BatchNotify = {
+    application_ids: Array<(string)>;
+    message: string;
+};
+
+export type BatchNotifyResult = {
+    notified?: number;
+    skipped?: number;
 };
 
 export type Body_admin_auth_login = {
@@ -131,6 +171,13 @@ export type FeedbackPublic = {
     created_at?: (string | null);
 };
 
+/**
+ * Resolved download URL for a stored file (resume, attachment).
+ */
+export type FileUrl = {
+    url: string;
+};
+
 export type HTTPValidationError = {
     detail?: Array<ValidationError>;
 };
@@ -157,7 +204,13 @@ export type InterviewsPublic = {
     count: number;
 };
 
-export type InterviewStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+export type InterviewStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW' | 'REJECTED';
+
+export type InterviewUpdate = {
+    interviewer_id?: (string | null);
+    round?: (number | null);
+    scheduled_time?: (string | null);
+};
 
 export type JobCreate = {
     title: string;
@@ -266,6 +319,24 @@ export type PortalApplicationSubmit = {
     source?: (string | null);
 };
 
+/**
+ * The candidate's own profile, as seen from the portal.
+ */
+export type PortalProfile = {
+    name: string;
+    email: string;
+    phone?: (string | null);
+    resume_url?: (string | null);
+};
+
+/**
+ * Editable profile fields. Email is the login identity -> read-only.
+ */
+export type PortalProfileUpdate = {
+    name: string;
+    phone?: (string | null);
+};
+
 export type PortalToken = {
     access_token: string;
     token_type?: string;
@@ -349,6 +420,12 @@ export type AdminApplicationsBatchAdvanceData = {
 };
 
 export type AdminApplicationsBatchAdvanceResponse = (ApplicationsPublic);
+
+export type AdminApplicationsBatchNotifyData = {
+    requestBody: BatchNotify;
+};
+
+export type AdminApplicationsBatchNotifyResponse = (BatchNotifyResult);
 
 export type AdminApplicationsCreateApplicationData = {
     requestBody: ApplicationCreate;
@@ -446,6 +523,12 @@ export type AdminCandidatesUploadResumeData = {
 
 export type AdminCandidatesUploadResumeResponse = (CandidatePublic);
 
+export type AdminCandidatesDownloadResumeData = {
+    candidateId: string;
+};
+
+export type AdminCandidatesDownloadResumeResponse = (FileUrl);
+
 export type AdminInterviewsListCalendarResponse = (Array<InterviewPublic>);
 
 export type AdminInterviewsListInterviewsData = {
@@ -462,11 +545,24 @@ export type AdminInterviewsCreateInterviewData = {
 
 export type AdminInterviewsCreateInterviewResponse = (InterviewPublic);
 
+export type AdminInterviewsBatchCreateInterviewsData = {
+    requestBody: BatchInterviewCreate;
+};
+
+export type AdminInterviewsBatchCreateInterviewsResponse = (BatchInterviewResult);
+
 export type AdminInterviewsGetInterviewData = {
     interviewId: string;
 };
 
 export type AdminInterviewsGetInterviewResponse = (InterviewPublic);
+
+export type AdminInterviewsUpdateInterviewData = {
+    interviewId: string;
+    requestBody: InterviewUpdate;
+};
+
+export type AdminInterviewsUpdateInterviewResponse = (InterviewPublic);
 
 export type AdminInterviewsGetFeedbackData = {
     interviewId: string;
@@ -708,3 +804,11 @@ export type PortalOffersRejectOfferData = {
 };
 
 export type PortalOffersRejectOfferResponse = (OfferPublic);
+
+export type PortalProfileGetMyProfileResponse = (PortalProfile);
+
+export type PortalProfileUpdateMyProfileData = {
+    requestBody: PortalProfileUpdate;
+};
+
+export type PortalProfileUpdateMyProfileResponse = (PortalProfile);

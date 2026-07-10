@@ -35,7 +35,7 @@ def send_email(
     email_to: str,
     subject: str = "",
     html_content: str = "",
-) -> None:
+) -> Any:
     assert settings.emails_enabled, "no provided configuration for email variables"
     message = emails.Message(
         subject=subject,
@@ -52,7 +52,17 @@ def send_email(
     if settings.SMTP_PASSWORD:
         smtp_options["password"] = settings.SMTP_PASSWORD
     response = message.send(to=email_to, smtp=smtp_options)
-    logger.info(f"send email result: {response}")
+    # The `emails` lib swallows SMTP errors with fail_silently=True and reports
+    # them as status_code=None with the real cause in `.error`. Surface that so
+    # misconfigurations (wrong port/SSL, auth failure) aren't invisible.
+    if response and response.success:
+        logger.info(f"send email result: {response}")
+    else:
+        err = repr(response.error) if response else None
+        logger.warning(
+            f"send email failed: to={email_to} response={response} error={err}"
+        )
+    return response
 
 
 def generate_test_email(email_to: str) -> EmailData:

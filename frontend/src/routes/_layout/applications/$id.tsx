@@ -6,6 +6,7 @@ import {
   AdminCandidatesService,
   AdminInterviewsService,
   AdminJobsService,
+  type ApplicationStage,
 } from "@/client"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -16,6 +17,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useI18n } from "@/contexts/i18n"
+
+const STAGE_KEYS: Record<ApplicationStage, string> = {
+  APPLIED: "board.applied",
+  SCREENING: "board.screening",
+  INTERVIEW: "board.interview",
+  OFFER: "board.offer",
+  HIRED: "board.hired",
+  REJECTED: "board.rejected",
+}
 
 export const Route = createFileRoute("/_layout/applications/$id")({
   component: ApplicationDetail,
@@ -24,6 +35,7 @@ export const Route = createFileRoute("/_layout/applications/$id")({
 
 function ApplicationDetail() {
   const { id } = Route.useParams()
+  const { t } = useI18n()
 
   const { data: app } = useQuery({
     queryKey: ["application", id],
@@ -51,25 +63,30 @@ function ApplicationDetail() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">
-          {candidateMap.get(app?.candidate_id || "") || "Application"}
+          {candidateMap.get(app?.candidate_id || "") || t("common.application")}
         </h1>
         <div className="flex gap-4 mt-1 text-sm text-muted-foreground">
-          <span>Job: {jobMap.get(app?.job_id || "") || "-"}</span>
           <span>
-            Stage: <Badge variant="secondary">{app?.stage}</Badge>
+            {t("common.job")}: {jobMap.get(app?.job_id || "") || "-"}
+          </span>
+          <span>
+            {t("common.stage")}:{" "}
+            <Badge variant="secondary">
+              {app ? t(STAGE_KEYS[app.stage] as never) : ""}
+            </Badge>
           </span>
         </div>
       </div>
 
       <div>
-        <h2 className="text-lg font-semibold mb-3">Interviews</h2>
+        <h2 className="text-lg font-semibold mb-3">{t("interviews.title")}</h2>
         <div className="rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Round</TableHead>
-                <TableHead>Scheduled</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>{t("interviews.round")}</TableHead>
+                <TableHead>{t("interviews.scheduledTime")}</TableHead>
+                <TableHead>{t("common.status")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -79,7 +96,7 @@ function ApplicationDetail() {
                     colSpan={3}
                     className="text-center text-muted-foreground"
                   >
-                    No interviews yet.
+                    {t("interviews.noInterviews")}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -90,7 +107,11 @@ function ApplicationDetail() {
                       {new Date(iv.scheduled_time).toLocaleString()}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{iv.status}</Badge>
+                      <Badge variant="secondary">
+                        {iv.status === "CANCELLED"
+                          ? t("common.cancelled")
+                          : iv.status}
+                      </Badge>
                     </TableCell>
                   </TableRow>
                 ))

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { useI18n } from "@/contexts/i18n"
+import { usePortalAuth } from "@/contexts/portal-auth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
 
@@ -19,6 +20,7 @@ function PortalLogin() {
   const navigate = useNavigate()
   const { t } = useI18n()
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { login } = usePortalAuth()
   const [email, setEmail] = useState("")
   const [code, setCode] = useState("")
   const [sent, setSent] = useState(false)
@@ -36,7 +38,7 @@ function PortalLogin() {
     mutationFn: () =>
       PortalAuthService.verifyCode({ requestBody: { email, code } }),
     onSuccess: (res) => {
-      localStorage.setItem("portal_token", res.access_token)
+      login(res.access_token, email)
       navigate({ to: "/portal/applications" })
     },
     onError: handleError.bind(showErrorToast),

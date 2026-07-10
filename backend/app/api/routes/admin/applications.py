@@ -14,6 +14,8 @@ from app.models import (
     ApplicationStage,
     ApplicationTransition,
     BatchAdvance,
+    BatchNotify,
+    BatchNotifyResult,
     User,
 )
 from app.services import application_service
@@ -37,6 +39,22 @@ def batch_advance(
     return ApplicationsPublic(
         data=[ApplicationPublic.model_validate(a) for a in apps],
         count=len(apps),
+    )
+
+
+@router.post(
+    "/batch-notify",
+    response_model=BatchNotifyResult,
+    dependencies=[Depends(require_permission(Permissions.APPLICATION_ADVANCE))],
+)
+def batch_notify(
+    session: SessionDep,
+    current_user: Annotated[User, Depends(require_permission(Permissions.APPLICATION_ADVANCE))],
+    body: BatchNotify,
+) -> Any:
+    """§16 batch notify: send an in-app message to each application's owner."""
+    return application_service.batch_notify(
+        session=session, user=current_user, notify_in=body
     )
 
 

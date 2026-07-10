@@ -40,6 +40,9 @@ from app.api.routes.portal import (
     jobs as portal_jobs,
 )
 from app.api.routes.portal import (
+    me as portal_me,
+)
+from app.api.routes.portal import (
     offers as portal_offers,
 )
 
@@ -62,3 +65,4 @@ api_router.include_router(portal_jobs.router)
 api_router.include_router(portal_auth.router)
 api_router.include_router(portal_applications.router)
 api_router.include_router(portal_offers.router)
+api_router.include_router(portal_me.router)

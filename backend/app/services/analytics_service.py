@@ -2,7 +2,16 @@
 
 from sqlmodel import Session, func, select
 
-from app.models import Application, ApplicationStage, Candidate, Job, JobStatus
+from app.models import (
+    Application,
+    ApplicationStage,
+    Candidate,
+    Interview,
+    InterviewFeedback,
+    InterviewStatus,
+    Job,
+    JobStatus,
+)
 
 
 def get_summary(*, session: Session) -> dict:
@@ -37,6 +46,21 @@ def get_summary(*, session: Session) -> dict:
         round(hired / total_applications * 100, 1) if total_applications else 0
     )
 
+    # Dashboard §16: candidates awaiting action (not yet in interview/offer).
+    pending_candidates = funnel.get("APPLIED", 0) + funnel.get("SCREENING", 0)
+
+    # Dashboard §16: completed interviews still missing feedback. Count
+    # COMPLETED interviews whose id has no InterviewFeedback row.
+    feedback_interview_ids = select(InterviewFeedback.interview_id)
+    pending_feedback = session.exec(
+        select(func.count())
+        .select_from(Interview)
+        .where(
+            Interview.status == InterviewStatus.COMPLETED,
+            Interview.id.not_in(feedback_interview_ids),  # type: ignore[attr-defined]
+        )
+    ).one()
+
     return {
         "total_jobs": total_jobs,
         "open_jobs": open_jobs,
@@ -46,4 +70,6 @@ def get_summary(*, session: Session) -> dict:
         "channels": channels,
         "hired": hired,
         "conversion_rate": conversion_rate,
+        "pending_candidates": pending_candidates,
+        "pending_feedback": pending_feedback,
     }

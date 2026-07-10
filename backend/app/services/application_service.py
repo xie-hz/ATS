@@ -11,6 +11,8 @@ from app.models import (
     ApplicationPublic,
     ApplicationsPublic,
     ApplicationStage,
+    BatchNotify,
+    BatchNotifyResult,
     Candidate,
     DataScopeType,
     Interview,
@@ -19,7 +21,7 @@ from app.models import (
     OfferStatus,
     User,
 )
-from app.services import audit_service
+from app.services import audit_service, email_service, notification_service
 from app.services.base import get_scope, not_found
 
 
@@ -211,6 +213,14 @@ def advance_application(
             )
             session.add(draft)
             session.commit()
+    # Notify the candidate of the stage change.
+    email, job_title = email_service.get_app_contact(
+        session=session, application_id=app.id
+    )
+    if email:
+        email_service.send_stage_changed_email(
+            email_to=email, job_title=job_title, stage=target_stage
+        )
     return app
 
 
@@ -249,6 +259,14 @@ def reject_application(
     session.add(app)
     session.commit()
     session.refresh(app)
+    # Notify the candidate they were rejected.
+    email, job_title = email_service.get_app_contact(
+        session=session, application_id=app.id
+    )
+    if email:
+        email_service.send_stage_changed_email(
+            email_to=email, job_title=job_title, stage=app.stage
+        )
     return app
 
 
@@ -305,3 +323,39 @@ def batch_advance(
             # Skip applications that can't transition (wrong stage / not found).
             continue
     return apps
+
+
+def batch_notify(
+    *,
+    session: Session,
+    user: User,
+    notify_in: BatchNotify,
+) -> BatchNotifyResult:
+    """§16 batch notify: send an in-app message to each application's owner.
+
+    Only applications visible to the caller (data scope) are considered.
+    Applications without an assigned owner are skipped.
+    """
+    result = BatchNotifyResult()
+    seen: set[uuid.UUID] = set()
+    for app_id in notify_in.application_ids:
+        if app_id in seen:
+            continue
+        seen.add(app_id)
+        try:
+            app = get_application(session=session, user=user, application_id=app_id)
+        except HTTPException:
+            continue
+        if not app.owner_id:
+            result.skipped += 1
+            continue
+        notification_service.create_notification(
+            session=session,
+            user_id=app.owner_id,
+            type="batch_notify",
+            content=notify_in.message,
+            related_type="application",
+            related_id=app.id,
+        )
+        result.notified += 1
+    return result

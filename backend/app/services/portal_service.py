@@ -29,7 +29,9 @@ from app.models import (
     OfferStatus,
     PortalApplicationPublic,
     PortalApplicationSubmit,
+    PortalProfileUpdate,
 )
+from app.services import email_service
 from app.services.base import not_found
 from app.services.candidate_service import get_candidate_by_email
 from app.utils import send_email
@@ -80,6 +82,23 @@ def submit_application(
         session.add(candidate)
         session.commit()
         session.refresh(candidate)
+    else:
+        # Keep the candidate record in sync: applying with edited info persists
+        # name/phone/resume changes so future applications are pre-filled.
+        changed = False
+        if submit_in.name and submit_in.name != candidate.name:
+            candidate.name = submit_in.name
+            changed = True
+        if submit_in.phone != candidate.phone:
+            candidate.phone = submit_in.phone
+            changed = True
+        if submit_in.resume_url and submit_in.resume_url != candidate.resume_url:
+            candidate.resume_url = submit_in.resume_url
+            changed = True
+        if changed:
+            session.add(candidate)
+            session.commit()
+            session.refresh(candidate)
     # Block duplicate active applications for the same job.
     existing = session.exec(
         select(Application).where(
@@ -102,6 +121,10 @@ def submit_application(
     session.add(app)
     session.commit()
     session.refresh(app)
+    # Notify the candidate their application was received.
+    email_service.send_application_submitted_email(
+        email_to=submit_in.email, job_title=job.title
+    )
     return app
 
 
@@ -255,3 +278,26 @@ def reject_portal_offer(
     session.commit()
     session.refresh(offer)
     return offer
+
+
+def get_portal_profile(*, session: Session, email: str) -> Candidate:
+    """Return the candidate's own profile. 404 if they have no record yet."""
+    candidate = get_candidate_by_email(session=session, email=email)
+    if not candidate:
+        raise not_found("Profile")
+    return candidate
+
+
+def update_portal_profile(
+    *, session: Session, email: str, profile_in: PortalProfileUpdate
+) -> Candidate:
+    """Update editable profile fields (name/phone). Email is read-only."""
+    candidate = get_candidate_by_email(session=session, email=email)
+    if not candidate:
+        raise not_found("Profile")
+    candidate.name = profile_in.name
+    candidate.phone = profile_in.phone
+    session.add(candidate)
+    session.commit()
+    session.refresh(candidate)
+    return candidate

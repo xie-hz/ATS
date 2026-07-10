@@ -435,6 +435,18 @@ class BatchAdvance(SQLModel):
     target_stage: ApplicationStage
 
 
+class BatchNotify(SQLModel):
+    """§16 batch notify: send an in-app message to each application's owner."""
+
+    application_ids: list[uuid.UUID]
+    message: str
+
+
+class BatchNotifyResult(SQLModel):
+    notified: int = 0  # applications whose owner received the notification
+    skipped: int = 0  # applications with no owner assigned
+
+
 # ---------------------------------------------------------------------------
 # Interview
 # ---------------------------------------------------------------------------
@@ -491,6 +503,31 @@ class InterviewPublic(SQLModel):
 class InterviewsPublic(SQLModel):
     data: list[InterviewPublic]
     count: int
+
+
+class BatchInterviewCreate(SQLModel):
+    """§16 batch invite: schedule one interview per selected application.
+
+    Interviews are spaced `interval_minutes` apart starting from
+    `scheduled_time` so a single interviewer gets back-to-back slots without
+    tripping the ±30 min conflict check.
+    """
+
+    application_ids: list[uuid.UUID]
+    interviewer_id: uuid.UUID
+    round: int = Field(default=1, ge=1)
+    scheduled_time: datetime  # start time of the first slot
+    interval_minutes: int = Field(default=60, ge=1)
+
+
+class BatchInterviewError(SQLModel):
+    application_id: uuid.UUID
+    detail: str
+
+
+class BatchInterviewResult(SQLModel):
+    created: list[InterviewPublic] = Field(default_factory=list)
+    errors: list[BatchInterviewError] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -631,6 +668,22 @@ class PortalApplicationPublic(SQLModel):
     created_at: datetime | None = None
 
 
+class PortalProfile(SQLModel):
+    """The candidate's own profile, as seen from the portal."""
+
+    name: str
+    email: str
+    phone: str | None = None
+    resume_url: str | None = None
+
+
+class PortalProfileUpdate(SQLModel):
+    """Editable profile fields. Email is the login identity -> read-only."""
+
+    name: str = Field(min_length=1, max_length=100)
+    phone: str | None = Field(default=None, max_length=32)
+
+
 # ---------------------------------------------------------------------------
 # Notification
 # ---------------------------------------------------------------------------
@@ -717,6 +770,9 @@ class AnalyticsSummary(SQLModel):
     channels: dict = Field(default_factory=dict)
     hired: int = 0
     conversion_rate: float = 0
+    # Dashboard §16: work-in-progress counts.
+    pending_candidates: int = 0  # APPLIED + SCREENING applications
+    pending_feedback: int = 0  # COMPLETED interviews with no feedback yet
 
 
 # ---------------------------------------------------------------------------
@@ -726,6 +782,12 @@ class AnalyticsSummary(SQLModel):
 
 class Message(SQLModel):
     message: str
+
+
+class FileUrl(SQLModel):
+    """Resolved download URL for a stored file (resume, attachment)."""
+
+    url: str
 
 
 class Token(SQLModel):

@@ -9,6 +9,9 @@ from sqlmodel import Session, col, func, select
 from app.models import (
     Application,
     ApplicationStage,
+    BatchInterviewCreate,
+    BatchInterviewError,
+    BatchInterviewResult,
     DataScopeType,
     FeedbackCreate,
     Interview,
@@ -20,7 +23,7 @@ from app.models import (
     Job,
     User,
 )
-from app.services import notification_service
+from app.services import email_service, notification_service
 from app.services.base import get_scope, not_found
 
 
@@ -132,6 +135,17 @@ def create_interview(
         app.stage = ApplicationStage.INTERVIEW
         session.add(app)
         session.commit()
+    # Notify the candidate of the scheduled interview.
+    email, job_title = email_service.get_app_contact(
+        session=session, application_id=iv.application_id
+    )
+    if email:
+        email_service.send_interview_scheduled_email(
+            email_to=email,
+            job_title=job_title,
+            scheduled_time=iv.scheduled_time,
+            round=iv.round,
+        )
     return iv
 
 
@@ -185,6 +199,17 @@ def cancel_interview(
             app.stage = ApplicationStage.SCREENING
             session.add(app)
             session.commit()
+    # Notify the candidate the interview was cancelled.
+    email, job_title = email_service.get_app_contact(
+        session=session, application_id=iv.application_id
+    )
+    if email:
+        email_service.send_interview_cancelled_email(
+            email_to=email,
+            job_title=job_title,
+            scheduled_time=iv.scheduled_time,
+            round=iv.round,
+        )
     return iv
 
 
@@ -261,3 +286,43 @@ def submit_feedback(
     session.commit()
     session.refresh(feedback)
     return feedback
+
+
+def batch_create_interviews(
+    *, session: Session, batch_in: BatchInterviewCreate
+) -> BatchInterviewResult:
+    """§16 batch invite: one interview per application, spaced by interval.
+
+    Reuses create_interview per item (conflict + round-dup checks, stage
+    advancement, interviewer notification) and collects per-item errors so a
+    single bad application doesn't abort the whole batch.
+    """
+    from datetime import timedelta
+
+    result = BatchInterviewResult()
+    # De-duplicate while preserving order.
+    seen: set[uuid.UUID] = set()
+    unique_ids = [aid for aid in batch_in.application_ids if not (aid in seen or seen.add(aid))]  # type: ignore[func-returns-value]
+
+    for i, app_id in enumerate(unique_ids):
+        slot = batch_in.scheduled_time + timedelta(
+            minutes=i * batch_in.interval_minutes
+        )
+        try:
+            iv = create_interview(
+                session=session,
+                interview_in=InterviewCreate(
+                    application_id=app_id,
+                    interviewer_id=batch_in.interviewer_id,
+                    round=batch_in.round,
+                    scheduled_time=slot,
+                ),
+            )
+            result.created.append(InterviewPublic.model_validate(iv))
+        except HTTPException as exc:
+            result.errors.append(
+                BatchInterviewError(
+                    application_id=app_id, detail=str(exc.detail)
+                )
+            )
+    return result
