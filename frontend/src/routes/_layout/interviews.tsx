@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
+import { Briefcase } from "lucide-react"
 import { useState } from "react"
 
 import {
@@ -22,6 +23,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -85,7 +93,6 @@ function InterviewsPage() {
 
   const candidateMap = new Map(candData?.data?.map((c) => [c.id, c.name]))
   const jobMap = new Map(jobsData?.data?.map((j) => [j.id, j.title]))
-  const appMap = new Map(appsData?.data?.map((a) => [a.id, a]))
   const userMap = new Map(usersData?.data?.map((u) => [u.id, u.name]))
   const interviewers =
     usersData?.data?.filter((u) => u.roles?.includes("interviewer")) ?? []
@@ -94,6 +101,7 @@ function InterviewsPage() {
   const [interviewerId, setInterviewerId] = useState("")
   const [round, setRound] = useState(1)
   const [scheduled, setScheduled] = useState("")
+  const [jobFilter, setJobFilter] = useState("")
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -175,6 +183,19 @@ function InterviewsPage() {
   })
 
   const interviews = ivData?.data ?? []
+  // Unique jobs derived from the visible interviews so the filter works for
+  // every role (interviewers can't list all jobs, but they can see the jobs
+  // in their own interview records).
+  const jobOptions = (() => {
+    const m = new Map<string, string>()
+    for (const iv of interviews) {
+      if (iv.job_id && iv.job_title) m.set(iv.job_id, iv.job_title)
+    }
+    return Array.from(m, ([id, title]) => ({ id, title }))
+  })()
+  const filtered = jobFilter
+    ? interviews.filter((iv) => iv.job_id === jobFilter)
+    : interviews
 
   return (
     <div className="space-y-6">
@@ -302,6 +323,26 @@ function InterviewsPage() {
         </div>
       </div>
 
+      <div className="flex items-center gap-2">
+        <Select
+          value={jobFilter || "all"}
+          onValueChange={(v) => setJobFilter(v === "all" ? "" : v)}
+        >
+          <SelectTrigger className="w-56">
+            <Briefcase className="size-4 text-muted-foreground" />
+            <SelectValue placeholder={t("interviews.allJobs")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("interviews.allJobs")}</SelectItem>
+            {jobOptions.map((j) => (
+              <SelectItem key={j.id} value={j.id}>
+                {j.title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -318,7 +359,7 @@ function InterviewsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {interviews.length === 0 ? (
+            {filtered.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={7}
@@ -328,16 +369,11 @@ function InterviewsPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              interviews.map((iv) => {
-                const app = appMap.get(iv.application_id)
+              filtered.map((iv) => {
                 return (
                   <TableRow key={iv.id}>
-                    <TableCell>
-                      {candidateMap.get(app?.candidate_id || "") || "-"}
-                    </TableCell>
-                    <TableCell>
-                      {jobMap.get(app?.job_id || "") || "-"}
-                    </TableCell>
+                    <TableCell>{iv.candidate_name || "-"}</TableCell>
+                    <TableCell>{iv.job_title || "-"}</TableCell>
                     <TableCell>
                       {userMap.get(iv.interviewer_id || "") || "-"}
                     </TableCell>

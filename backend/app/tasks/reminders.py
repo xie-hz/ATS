@@ -12,11 +12,10 @@ from app.core.celery import celery_app
 from app.core.db import engine
 from app.models import (
     Interview,
-    InterviewFeedback,
     InterviewStatus,
     Notification,
 )
-from app.services import notification_service
+from app.services import email_service, notification_service
 
 
 def _already_notified(
@@ -56,36 +55,49 @@ def send_reminders() -> None:
                 continue
             if _already_notified(session, "interview", iv.id, "interview_reminder"):
                 continue
+            cand_name, job_title, _ = email_service.get_app_context(
+                session=session, application_id=iv.application_id
+            )
+            when = iv.scheduled_time.strftime("%Y-%m-%d %H:%M")
             notification_service.create_notification(
                 session=session,
                 user_id=iv.interviewer_id,
                 type="interview_reminder",
-                content=f"Interview round {iv.round} starts soon",
+                content=(
+                    f"面试即将开始：{cand_name or '候选人'}（{job_title}）"
+                    f"第 {iv.round} 轮，{when}"
+                ),
                 related_type="interview",
                 related_id=iv.id,
             )
 
-        # 2. Completed interviews with no feedback -> nudge the interviewer.
-        completed = session.exec(
-            select(Interview).where(Interview.status == InterviewStatus.COMPLETED)
+        # 2. SCHEDULED interviews past their time with no feedback -> nudge.
+        #    An interview stays SCHEDULED until feedback is submitted (which
+        #    flips it to COMPLETED), so a SCHEDULED interview whose time has
+        #    passed is one awaiting evaluation. Give a 1h grace window so we
+        #    don't nudge while the interview is still underway.
+        overdue = session.exec(
+            select(Interview).where(
+                Interview.status == InterviewStatus.SCHEDULED,
+                Interview.scheduled_time <= now - timedelta(hours=1),
+            )
         ).all()
-        for iv in completed:
+        for iv in overdue:
             if not iv.interviewer_id:
-                continue
-            has_feedback = session.exec(
-                select(InterviewFeedback).where(
-                    InterviewFeedback.interview_id == iv.id
-                )
-            ).first()
-            if has_feedback:
                 continue
             if _already_notified(session, "interview", iv.id, "feedback_overdue"):
                 continue
+            cand_name, job_title, _ = email_service.get_app_context(
+                session=session, application_id=iv.application_id
+            )
             notification_service.create_notification(
                 session=session,
                 user_id=iv.interviewer_id,
                 type="feedback_overdue",
-                content=f"Feedback pending for interview round {iv.round}",
+                content=(
+                    f"面试评价待提交：{cand_name or '候选人'}（{job_title}）"
+                    f"第 {iv.round} 轮"
+                ),
                 related_type="interview",
                 related_id=iv.id,
             )

@@ -214,12 +214,15 @@ def advance_application(
             session.add(draft)
             session.commit()
     # Notify the candidate of the stage change.
-    email, job_title = email_service.get_app_contact(
+    cand_name, job_title, email = email_service.get_app_context(
         session=session, application_id=app.id
     )
     if email:
         email_service.send_stage_changed_email(
-            email_to=email, job_title=job_title, stage=target_stage
+            email_to=email,
+            recipient_name=cand_name,
+            job_title=job_title,
+            stage=target_stage,
         )
     return app
 
@@ -260,12 +263,15 @@ def reject_application(
     session.commit()
     session.refresh(app)
     # Notify the candidate they were rejected.
-    email, job_title = email_service.get_app_contact(
+    cand_name, job_title, email = email_service.get_app_context(
         session=session, application_id=app.id
     )
     if email:
         email_service.send_stage_changed_email(
-            email_to=email, job_title=job_title, stage=app.stage
+            email_to=email,
+            recipient_name=cand_name,
+            job_title=job_title,
+            stage=app.stage,
         )
     return app
 

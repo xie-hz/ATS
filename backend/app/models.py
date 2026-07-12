@@ -498,6 +498,11 @@ class InterviewPublic(SQLModel):
     scheduled_time: datetime
     status: InterviewStatus
     created_at: datetime | None = None
+    # Denormalized for display so callers don't need separate (permission-scoped)
+    # candidate/job lookups -- e.g. interviewers can't list all candidates/jobs.
+    candidate_name: str = ""
+    job_title: str = ""
+    job_id: uuid.UUID | None = None
 
 
 class InterviewsPublic(SQLModel):
@@ -626,20 +631,6 @@ class OffersPublic(SQLModel):
 # ---------------------------------------------------------------------------
 # Candidate portal auth
 # ---------------------------------------------------------------------------
-
-
-class EmailVerificationCode(SQLModel, table=True):
-    __tablename__ = "email_verification_code"
-
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    email: EmailStr = Field(index=True, max_length=255)
-    code: str = Field(max_length=16)
-    expires_at: datetime = Field(sa_type=DateTime(timezone=True))  # type: ignore
-    used: bool = Field(default=False)
-    created_at: datetime | None = Field(
-        default_factory=get_datetime_utc,
-        sa_type=DateTime(timezone=True),  # type: ignore
-    )
 
 
 class SendCodeRequest(SQLModel):

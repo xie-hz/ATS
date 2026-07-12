@@ -1,13 +1,11 @@
 from fastapi.testclient import TestClient
-from sqlmodel import Session, col, select
 
 from app.core.config import settings
-from app.models import EmailVerificationCode
 from tests.utils.utils import random_email
 
 
 def test_portal_submit_and_track(
-    client: TestClient, db: Session, hr_token_headers: dict[str, str]
+    client: TestClient, hr_token_headers: dict[str, str], fake_redis
 ) -> None:
     # Create and open a job via admin API.
     r = client.post(
@@ -51,17 +49,14 @@ def test_portal_submit_and_track(
     )
     assert r.status_code == 200
 
-    code_record = db.exec(
-        select(EmailVerificationCode)
-        .where(EmailVerificationCode.email == email)
-        .order_by(col(EmailVerificationCode.created_at).desc())
-    ).first()
-    assert code_record is not None
+    # Read the code from Redis (fake) -- it's no longer stored in the DB.
+    code = fake_redis.get(f"portal:code:{email}")
+    assert code is not None
 
     # Verify code -> portal token.
     r = client.post(
         f"{settings.API_V1_STR}/portal/auth/verify",
-        json={"email": email, "code": code_record.code},
+        json={"email": email, "code": code},
     )
     assert r.status_code == 200
     portal_token = r.json()["access_token"]

@@ -939,6 +939,28 @@ export const InterviewPublicSchema = {
                 }
             ],
             title: 'Created At'
+        },
+        candidate_name: {
+            type: 'string',
+            title: 'Candidate Name',
+            default: ''
+        },
+        job_title: {
+            type: 'string',
+            title: 'Job Title',
+            default: ''
+        },
+        job_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Job Id'
         }
     },
     type: 'object',

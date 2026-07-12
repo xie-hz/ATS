@@ -37,12 +37,13 @@ def test_summary_pending_counts(
     db.commit()
     db.refresh(app)
 
-    # A completed interview with no feedback -> counts as pending feedback.
+    # A SCHEDULED interview whose time has passed -> counts as pending
+    # feedback (the interview should have concluded but no feedback yet).
     iv = Interview(
         application_id=app.id,
         round=1,
-        scheduled_time=datetime.now(UTC) + timedelta(days=1),
-        status=InterviewStatus.COMPLETED,
+        scheduled_time=datetime.now(UTC) - timedelta(hours=2),
+        status=InterviewStatus.SCHEDULED,
     )
     db.add(iv)
     db.commit()
@@ -56,4 +57,4 @@ def test_summary_pending_counts(
 
     assert data["funnel"]["APPLIED"] >= 1
     assert data["pending_candidates"] >= 1  # the APPLIED application
-    assert data["pending_feedback"] >= 1  # the completed interview w/o feedback
+    assert data["pending_feedback"] >= 1  # the past SCHEDULED interview

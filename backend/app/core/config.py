@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # Portal token: issued to candidates after email-code verification
     PORTAL_TOKEN_EXPIRE_MINUTES: int = 60
     # Email verification code expiry for candidate portal login
-    EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES: int = 10
+    EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES: int = 5
     FRONTEND_HOST: str = "http://localhost:5173"
     ENVIRONMENT: Literal["local", "staging", "production"] = "local"
 

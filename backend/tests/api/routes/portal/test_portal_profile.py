@@ -1,8 +1,6 @@
 from fastapi.testclient import TestClient
-from sqlmodel import Session, col, select
 
 from app.core.config import settings
-from app.models import EmailVerificationCode
 from tests.utils.utils import random_email
 
 
@@ -20,28 +18,24 @@ def _open_job(client: TestClient, headers: dict[str, str], title: str) -> str:
     return job_id
 
 
-def _portal_token(client: TestClient, db: Session, email: str) -> str:
+def _portal_token(client: TestClient, email: str, fake_redis) -> str:
     client.post(f"{settings.API_V1_STR}/portal/auth/send-code", json={"email": email})
-    code = db.exec(
-        select(EmailVerificationCode)
-        .where(EmailVerificationCode.email == email)
-        .order_by(col(EmailVerificationCode.created_at).desc())
-    ).first()
+    code = fake_redis.get(f"portal:code:{email}")
     r = client.post(
         f"{settings.API_V1_STR}/portal/auth/verify",
-        json={"email": email, "code": code.code},
+        json={"email": email, "code": code},
     )
     return r.json()["access_token"]
 
 
 def test_portal_profile_and_submit_updates_candidate(
-    client: TestClient, db: Session, hr_token_headers: dict[str, str]
+    client: TestClient, hr_token_headers: dict[str, str], fake_redis
 ) -> None:
     job1 = _open_job(client, hr_token_headers, "Profile Job 1")
     job2 = _open_job(client, hr_token_headers, "Profile Job 2")
     email = random_email()
     portal_headers = lambda: {  # noqa: E731
-        "Authorization": f"Bearer {_portal_token(client, db, email)}"
+        "Authorization": f"Bearer {_portal_token(client, email, fake_redis)}"
     }
 
     # 1. First application creates the candidate (name V1, phone 111).
@@ -78,11 +72,11 @@ def test_portal_profile_and_submit_updates_candidate(
 
 
 def test_portal_profile_not_found(
-    client: TestClient, db: Session
+    client: TestClient, fake_redis
 ) -> None:
     """Logged in but never applied -> no candidate record -> 404."""
     email = random_email()
-    token = _portal_token(client, db, email)
+    token = _portal_token(client, email, fake_redis)
     r = client.get(
         f"{settings.API_V1_STR}/portal/me/",
         headers={"Authorization": f"Bearer {token}"},

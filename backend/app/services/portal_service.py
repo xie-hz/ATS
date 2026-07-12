@@ -1,25 +1,24 @@
 """Candidate portal service: public job browsing, applications, email-code auth.
 
-Portal users authenticate via an email verification code (no password).
-The code is stored in the DB; wiring it to a real SMTP sender is phase 2.
-For now tests read the latest code from the DB directly.
+Portal users authenticate via an email verification code (no password). The
+code is stored in Redis with a short TTL (and deleted on use), so nothing
+ephemeral piles up in the DB.
 """
 
 import secrets
 import uuid
-from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlmodel import Session, col, func, select
 
 from app.core import security
 from app.core.config import settings
+from app.core.redis import get_redis
 from app.core.state_machines import assert_offer_transition
 from app.models import (
     Application,
     ApplicationStage,
     Candidate,
-    EmailVerificationCode,
     Job,
     JobPublic,
     JobsPublic,
@@ -34,7 +33,9 @@ from app.models import (
 from app.services import email_service
 from app.services.base import not_found
 from app.services.candidate_service import get_candidate_by_email
-from app.utils import send_email
+
+# Redis key for a candidate's verification code: portal:code:<email>.
+CODE_KEY = "portal:code:{}"
 
 
 def list_portal_jobs(
@@ -123,51 +124,36 @@ def submit_application(
     session.refresh(app)
     # Notify the candidate their application was received.
     email_service.send_application_submitted_email(
-        email_to=submit_in.email, job_title=job.title
+        email_to=submit_in.email, recipient_name=candidate.name, job_title=job.title
     )
     return app
 
 
 def send_verification_code(*, session: Session, email: str) -> None:
     code = "".join(secrets.choice("0123456789") for _ in range(6))
-    expires_at = datetime.now(UTC) + timedelta(
-        minutes=settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
+    ttl = settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES * 60
+    # Store in Redis with a TTL: auto-expires, single latest code per email,
+    # no rows accumulate in the DB.
+    get_redis().setex(CODE_KEY.format(email), ttl, code)
+    # Personalize with the candidate's name if we have a record for this email.
+    candidate = get_candidate_by_email(session=session, email=email)
+    email_service.send_verification_code_email(
+        email_to=email,
+        recipient_name=candidate.name if candidate else None,
+        code=code,
+        expire_minutes=settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES,
     )
-    record = EmailVerificationCode(email=email, code=code, expires_at=expires_at)
-    session.add(record)
-    session.commit()
-    if settings.emails_enabled:
-        html = (
-            f"<p>Your verification code is: <strong>{code}</strong></p>"
-            f"<p>It expires in "
-            f"{settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES} minutes.</p>"
-        )
-        send_email(
-            email_to=email,
-            subject=f"{settings.PROJECT_NAME} - Verification Code",
-            html_content=html,
-        )
 
 
-def verify_code(*, session: Session, email: str, code: str) -> str:
-    record = session.exec(
-        select(EmailVerificationCode)
-        .where(
-            EmailVerificationCode.email == email,
-            EmailVerificationCode.code == code,
-            EmailVerificationCode.used == False,  # noqa: E712
-            EmailVerificationCode.expires_at >= datetime.now(UTC),
-        )
-        .order_by(col(EmailVerificationCode.created_at).desc())
-    ).first()
-    if not record:
+def verify_code(*, email: str, code: str) -> str:
+    stored = get_redis().get(CODE_KEY.format(email))
+    if not stored or stored != code:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired verification code",
         )
-    record.used = True
-    session.add(record)
-    session.commit()
+    # One-time use: delete immediately after a successful verify.
+    get_redis().delete(CODE_KEY.format(email))
     return security.create_portal_token(email)
 
 

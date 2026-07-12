@@ -12,6 +12,7 @@ from app.models import (
     BatchInterviewCreate,
     BatchInterviewError,
     BatchInterviewResult,
+    Candidate,
     DataScopeType,
     FeedbackCreate,
     Interview,
@@ -41,6 +42,59 @@ def _scoped(session: Session, user: User):
     return stmt
 
 
+def to_public_list(
+    *, session: Session, interviews: list[Interview]
+) -> list[InterviewPublic]:
+    """Build InterviewPublic with denormalized candidate_name/job_title/job_id.
+
+    Batched (3 extra queries) so listing many interviews stays cheap. The
+    denormalized fields let the UI render names/titles without separate,
+    permission-scoped candidate/job listings (which interviewers can't fully
+    see).
+    """
+    if not interviews:
+        return []
+    app_ids = [iv.application_id for iv in interviews]
+    apps = {
+        a.id: a
+        for a in session.exec(
+            select(Application).where(col(Application.id).in_(app_ids))
+        ).all()
+    }
+    cand_ids = {a.candidate_id for a in apps.values()}
+    cands = {
+        c.id: c.name
+        for c in session.exec(
+            select(Candidate).where(col(Candidate.id).in_(list(cand_ids)))
+        ).all()
+    } if cand_ids else {}
+    job_ids = {a.job_id for a in apps.values()}
+    jobs = {
+        j.id: j.title
+        for j in session.exec(
+            select(Job).where(col(Job.id).in_(list(job_ids)))
+        ).all()
+    } if job_ids else {}
+    result: list[InterviewPublic] = []
+    for iv in interviews:
+        app = apps.get(iv.application_id)
+        result.append(
+            InterviewPublic.model_validate(
+                iv,
+                update={
+                    "candidate_name": cands.get(app.candidate_id, "") if app else "",
+                    "job_title": jobs.get(app.job_id, "") if app else "",
+                    "job_id": app.job_id if app else None,
+                },
+            )
+        )
+    return result
+
+
+def to_public(*, session: Session, iv: Interview) -> InterviewPublic:
+    return to_public_list(session=session, interviews=[iv])[0]
+
+
 def list_interviews(
     *,
     session: Session,
@@ -58,7 +112,7 @@ def list_interviews(
     )
     interviews = session.exec(stmt).all()
     return InterviewsPublic(
-        data=[InterviewPublic.model_validate(i) for i in interviews], count=count
+        data=to_public_list(session=session, interviews=interviews), count=count
     )
 
 
@@ -115,16 +169,35 @@ def create_interview(
     session.add(iv)
     session.commit()
     session.refresh(iv)
-    # Notify the assigned interviewer.
+    # Resolve candidate/job context once for the notification + emails.
+    cand_name, job_title, cand_email = email_service.get_app_context(
+        session=session, application_id=iv.application_id
+    )
+    when = iv.scheduled_time.strftime("%Y-%m-%d %H:%M")
+    # Notify the assigned interviewer (in-app).
     if iv.interviewer_id:
         notification_service.create_notification(
             session=session,
             user_id=iv.interviewer_id,
             type="interview_scheduled",
-            content=f"New interview scheduled (round {iv.round})",
+            content=(
+                f"新面试安排：{cand_name or '候选人'} 应聘「{job_title}」，"
+                f"第 {iv.round} 轮，{when}"
+            ),
             related_type="interview",
             related_id=iv.id,
         )
+        # Also email the interviewer.
+        interviewer = session.get(User, iv.interviewer_id)
+        if interviewer and interviewer.email:
+            email_service.send_interview_assigned_email(
+                email_to=interviewer.email,
+                recipient_name=interviewer.name,
+                candidate_name=cand_name or "候选人",
+                job_title=job_title,
+                scheduled_time=iv.scheduled_time,
+                round=iv.round,
+            )
     # 安排面试后，申请自动进入面试阶段
     app = session.get(Application, iv.application_id)
     if app and app.stage not in (
@@ -136,12 +209,10 @@ def create_interview(
         session.add(app)
         session.commit()
     # Notify the candidate of the scheduled interview.
-    email, job_title = email_service.get_app_contact(
-        session=session, application_id=iv.application_id
-    )
-    if email:
+    if cand_email:
         email_service.send_interview_scheduled_email(
-            email_to=email,
+            email_to=cand_email,
+            recipient_name=cand_name,
             job_title=job_title,
             scheduled_time=iv.scheduled_time,
             round=iv.round,
@@ -158,7 +229,7 @@ def list_calendar(*, session: Session, user: User) -> list[InterviewPublic]:
         .order_by(col(Interview.scheduled_time).asc())
     )
     interviews = session.exec(stmt).all()
-    return [InterviewPublic.model_validate(i) for i in interviews]
+    return to_public_list(session=session, interviews=interviews)
 
 
 def get_feedback(
@@ -200,12 +271,13 @@ def cancel_interview(
             session.add(app)
             session.commit()
     # Notify the candidate the interview was cancelled.
-    email, job_title = email_service.get_app_contact(
+    cand_name, job_title, email = email_service.get_app_context(
         session=session, application_id=iv.application_id
     )
     if email:
         email_service.send_interview_cancelled_email(
             email_to=email,
+            recipient_name=cand_name,
             job_title=job_title,
             scheduled_time=iv.scheduled_time,
             round=iv.round,

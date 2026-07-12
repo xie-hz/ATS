@@ -197,6 +197,9 @@ export type InterviewPublic = {
     scheduled_time: string;
     status: InterviewStatus;
     created_at?: (string | null);
+    candidate_name?: string;
+    job_title?: string;
+    job_id?: (string | null);
 };
 
 export type InterviewsPublic = {

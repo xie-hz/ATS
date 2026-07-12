@@ -88,7 +88,7 @@ def get_interview(
     iv = interview_service.get_interview(
         session=session, user=current_user, interview_id=interview_id
     )
-    return InterviewPublic.model_validate(iv)
+    return interview_service.to_public(session=session, iv=iv)
 
 
 @router.get(

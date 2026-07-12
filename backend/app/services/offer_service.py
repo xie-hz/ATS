@@ -155,12 +155,15 @@ def send_offer(*, session: Session, user: User, offer_id: uuid.UUID) -> Offer:
         after={"status": OfferStatus.SENT.value},
     )
     # Notify the candidate their offer has been sent.
-    email, job_title = email_service.get_app_contact(
+    cand_name, job_title, email = email_service.get_app_context(
         session=session, application_id=offer.application_id
     )
     if email:
         email_service.send_offer_email(
-            email_to=email, job_title=job_title, salary=offer.salary
+            email_to=email,
+            recipient_name=cand_name,
+            job_title=job_title,
+            salary=offer.salary,
         )
     return offer
 

@@ -1,5 +1,7 @@
 """Analytics service: hiring funnel, counts, channel effectiveness."""
 
+from datetime import UTC, datetime
+
 from sqlmodel import Session, func, select
 
 from app.models import (
@@ -7,7 +9,6 @@ from app.models import (
     ApplicationStage,
     Candidate,
     Interview,
-    InterviewFeedback,
     InterviewStatus,
     Job,
     JobStatus,
@@ -49,15 +50,18 @@ def get_summary(*, session: Session) -> dict:
     # Dashboard §16: candidates awaiting action (not yet in interview/offer).
     pending_candidates = funnel.get("APPLIED", 0) + funnel.get("SCREENING", 0)
 
-    # Dashboard §16: completed interviews still missing feedback. Count
-    # COMPLETED interviews whose id has no InterviewFeedback row.
-    feedback_interview_ids = select(InterviewFeedback.interview_id)
+    # Dashboard §16: interviews awaiting feedback. In this system an interview
+    # stays SCHEDULED until feedback is submitted (which flips it to COMPLETED),
+    # so "conducted but not yet evaluated" = SCHEDULED interviews whose scheduled
+    # time has passed. (COMPLETED always has feedback, so the old
+    # "COMPLETED-without-feedback" query was always 0.)
+    now = datetime.now(UTC)
     pending_feedback = session.exec(
         select(func.count())
         .select_from(Interview)
         .where(
-            Interview.status == InterviewStatus.COMPLETED,
-            Interview.id.not_in(feedback_interview_ids),  # type: ignore[attr-defined]
+            Interview.status == InterviewStatus.SCHEDULED,
+            Interview.scheduled_time <= now,
         )
     ).one()
 

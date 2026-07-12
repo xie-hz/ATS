@@ -30,6 +30,32 @@ def _disable_real_email() -> Generator[None]:
     settings.SMTP_HOST = original
 
 
+class _FakeRedis:
+    """In-memory stand-in for the Redis client (setex/get/delete) so portal
+    auth tests don't require a running Redis."""
+
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+
+    def setex(self, name: str, time: int, value: str) -> None:
+        self.store[name] = value
+
+    def get(self, name: str) -> str | None:
+        return self.store.get(name)
+
+    def delete(self, name: str) -> int:
+        return 1 if self.store.pop(name, None) is not None else 0
+
+
+@pytest.fixture()
+def fake_redis(monkeypatch) -> _FakeRedis:
+    fake = _FakeRedis()
+    # Patch at the call site: portal_service bound `get_redis` at import time,
+    # so patching app.core.redis.get_redis wouldn't reach it.
+    monkeypatch.setattr("app.services.portal_service.get_redis", lambda: fake)
+    return fake
+
+
 @pytest.fixture(scope="session", autouse=True)
 def db() -> Generator[Session]:
     # Recreate schema in the test DB from the SQLModel metadata, then seed.

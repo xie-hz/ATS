@@ -50,27 +50,36 @@ def _send(*, email_to: str, subject: str, html: str) -> None:
         )
 
 
-def get_app_contact(
+def get_app_context(
     *, session: Session, application_id
-) -> tuple[str | None, str]:
-    """Resolve (candidate email, job title) for an application."""
+) -> tuple[str | None, str, str | None]:
+    """Resolve (candidate name, job title, candidate email) for an application."""
     app = session.get(Application, application_id)
     if not app:
-        return None, ""
+        return None, "", None
     cand = session.get(Candidate, app.candidate_id)
     job = session.get(Job, app.job_id)
-    return (cand.email if cand else None), (job.title if job else "")
+    return (
+        cand.name if cand else None,
+        job.title if job else "",
+        cand.email if cand else None,
+    )
+
+
+def _greeting(name: str | None) -> str:
+    """Personalized greeting; falls back to a generic one if no name."""
+    return f"<p>{name} 您好，</p>" if name else "<p>您好，</p>"
 
 
 def send_application_submitted_email(
-    *, email_to: str, job_title: str
+    *, email_to: str, recipient_name: str | None, job_title: str
 ) -> None:
     _send(
         email_to=email_to,
         subject=f"【{settings.PROJECT_NAME}】申请已提交",
         html=(
-            f"<p>您好，</p>"
-            f"<p>您对「{job_title}」职位的申请已成功提交，我们会尽快处理。</p>"
+            _greeting(recipient_name)
+            + f"<p>您对「{job_title}」职位的申请已成功提交，我们会尽快处理。</p>"
             f"<p>可登录候选人门户随时查看申请进度。</p>"
         ),
     )
@@ -79,25 +88,26 @@ def send_application_submitted_email(
 def send_stage_changed_email(
     *,
     email_to: str,
+    recipient_name: str | None,
     job_title: str,
     stage: ApplicationStage,
 ) -> None:
     label = STAGE_LABELS.get(stage.value, stage.value)
     if stage == ApplicationStage.REJECTED:
         body = (
-            f"<p>您好，</p>"
-            f"<p>很遗憾，您对「{job_title}」的申请本次未通过筛选。"
+            _greeting(recipient_name)
+            + f"<p>很遗憾，您对「{job_title}」的申请本次未通过筛选。"
             f"感谢您的关注，祝您求职顺利。</p>"
         )
     elif stage == ApplicationStage.HIRED:
         body = (
-            f"<p>您好，</p>"
-            f"<p>恭喜您！您对「{job_title}」的申请已通过，欢迎加入我们。</p>"
+            _greeting(recipient_name)
+            + f"<p>恭喜您！您对「{job_title}」的申请已通过，欢迎加入我们。</p>"
         )
     else:
         body = (
-            f"<p>您好，</p>"
-            f"<p>您对「{job_title}」的申请状态已更新为：<strong>{label}</strong>。</p>"
+            _greeting(recipient_name)
+            + f"<p>您对「{job_title}」的申请状态已更新为：<strong>{label}</strong>。</p>"
         )
     _send(
         email_to=email_to,
@@ -107,15 +117,20 @@ def send_stage_changed_email(
 
 
 def send_interview_scheduled_email(
-    *, email_to: str, job_title: str, scheduled_time, round: int
+    *,
+    email_to: str,
+    recipient_name: str | None,
+    job_title: str,
+    scheduled_time,
+    round: int,
 ) -> None:
     when = scheduled_time.strftime("%Y-%m-%d %H:%M") if scheduled_time else "待定"
     _send(
         email_to=email_to,
         subject=f"【{settings.PROJECT_NAME}】面试邀请",
         html=(
-            f"<p>您好，</p>"
-            f"<p>您对「{job_title}」的申请已进入面试环节。</p>"
+            _greeting(recipient_name)
+            + f"<p>您对「{job_title}」的申请已进入面试环节。</p>"
             f"<p>第 {round} 轮面试时间：<strong>{when}</strong></p>"
             f"<p>请准时参加，祝您面试顺利！</p>"
         ),
@@ -123,32 +138,85 @@ def send_interview_scheduled_email(
 
 
 def send_interview_cancelled_email(
-    *, email_to: str, job_title: str, scheduled_time, round: int
+    *,
+    email_to: str,
+    recipient_name: str | None,
+    job_title: str,
+    scheduled_time,
+    round: int,
 ) -> None:
     when = scheduled_time.strftime("%Y-%m-%d %H:%M") if scheduled_time else "原定时间"
     _send(
         email_to=email_to,
         subject=f"【{settings.PROJECT_NAME}】面试已取消",
         html=(
-            f"<p>您好，</p>"
-            f"<p>很抱歉，您对「{job_title}」第 {round} 轮面试"
+            _greeting(recipient_name)
+            + f"<p>很抱歉，您对「{job_title}」第 {round} 轮面试"
             f"（原定 {when}）已取消。</p>"
             f"<p>如需重新安排，我们会另行通知，请留意邮箱。</p>"
         ),
     )
 
 
-def send_offer_email(*, email_to: str, job_title: str, salary: int | None) -> None:
-    salary_line = (
-        f"<p>Offer 薪资：{salary}</p>" if salary else ""
+def send_interview_assigned_email(
+    *,
+    email_to: str,
+    recipient_name: str | None,
+    candidate_name: str,
+    job_title: str,
+    scheduled_time,
+    round: int,
+) -> None:
+    """Notify an interviewer they've been assigned an interview."""
+    when = scheduled_time.strftime("%Y-%m-%d %H:%M") if scheduled_time else "待定"
+    _send(
+        email_to=email_to,
+        subject=f"【{settings.PROJECT_NAME}】您有一场新的面试",
+        html=(
+            _greeting(recipient_name)
+            + f"<p>您被安排主持一场面试：</p>"
+            f"<p>候选人：<strong>{candidate_name}</strong><br>"
+            f"职位：{job_title}<br>"
+            f"第 {round} 轮<br>"
+            f"时间：<strong>{when}</strong></p>"
+            f"<p>请在面试完成后及时提交评价。</p>"
+        ),
     )
+
+
+def send_offer_email(
+    *,
+    email_to: str,
+    recipient_name: str | None,
+    job_title: str,
+    salary: int | None,
+) -> None:
+    salary_line = f"<p>Offer 薪资：{salary}</p>" if salary else ""
     _send(
         email_to=email_to,
         subject=f"【{settings.PROJECT_NAME}】Offer 通知",
         html=(
-            f"<p>您好，</p>"
-            f"<p>恭喜您通过「{job_title}」的招聘流程！您的 Offer 已发送。</p>"
+            _greeting(recipient_name)
+            + f"<p>恭喜您通过「{job_title}」的招聘流程！您的 Offer 已发送。</p>"
             f"{salary_line}"
             f"<p>请登录候选人门户查看并确认。</p>"
+        ),
+    )
+
+
+def send_verification_code_email(
+    *,
+    email_to: str,
+    recipient_name: str | None,
+    code: str,
+    expire_minutes: int,
+) -> None:
+    _send(
+        email_to=email_to,
+        subject=f"【{settings.PROJECT_NAME}】验证码",
+        html=(
+            _greeting(recipient_name)
+            + f"<p>您的验证码是：<strong>{code}</strong></p>"
+            f"<p>验证码 {expire_minutes} 分钟内有效，请勿泄露给他人。</p>"
         ),
     )

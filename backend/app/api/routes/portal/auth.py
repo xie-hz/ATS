@@ -20,8 +20,6 @@ def send_code(session: SessionDep, body: SendCodeRequest) -> Any:
 
 
 @router.post("/verify", response_model=PortalToken)
-def verify_code(session: SessionDep, body: VerifyCodeRequest) -> Any:
-    token = portal_service.verify_code(
-        session=session, email=body.email, code=body.code
-    )
+def verify_code(body: VerifyCodeRequest) -> Any:
+    token = portal_service.verify_code(email=body.email, code=body.code)
     return PortalToken(access_token=token)
