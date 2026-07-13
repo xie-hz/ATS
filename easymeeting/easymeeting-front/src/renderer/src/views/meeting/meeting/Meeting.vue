@@ -120,6 +120,12 @@ const closeMeeting = () => {
   proxy.Confirm({
     message: '确认要退出会议吗?',
     okfun: async () => {
+      // 关闭窗口前先调 exitMeeting，让后端清理成员状态
+      try {
+        await proxy.Request({ url: proxy.Api.exitMeeting })
+      } catch (e) {
+        // 忽略错误，仍然关闭窗口
+      }
       titlbarRef.value.custClose()
     }
   })

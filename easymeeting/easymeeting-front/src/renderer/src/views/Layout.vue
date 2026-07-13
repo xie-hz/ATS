@@ -259,7 +259,18 @@ const listenLogout = () => {
       reconnectLoading.close()
       reconnectLoading = null
     }
+    // 登出时重置会议状态，避免下次登录按钮不可点
+    meetingStore.updateMeeting(false)
     router.push('/')
+  })
+}
+
+// 监听会议窗口关闭，重置入会状态
+const listenCloseWindow = () => {
+  window.electron.ipcRenderer.on('closeWindow', (e, { windowId }) => {
+    if (windowId === 'meeting') {
+      meetingStore.updateMeeting(false)
+    }
   })
 }
 
@@ -278,6 +289,7 @@ watch(
 onMounted(() => {
   listenLogout()
   listenReconnect()
+  listenCloseWindow()
   loadContactApplyCount()
   listenMessage()
 })
@@ -286,6 +298,7 @@ onUnmounted(() => {
   window.electron.ipcRenderer.removeAllListeners('mainMessage')
   window.electron.ipcRenderer.removeAllListeners('logout')
   window.electron.ipcRenderer.removeAllListeners('reconnect')
+  window.electron.ipcRenderer.removeAllListeners('closeWindow')
 })
 </script>
 
