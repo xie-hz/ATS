@@ -1,0 +1,35 @@
+# ===== Maven =====
+target/
+*.class
+*.jar
+*.war
+!.mvn/wrapper/maven-wrapper.jar
+
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# ===== 日志 & 临时文件 =====
+logs/
+temp/
+*.log
+
+# ===== 环境配置 =====
+.env.local
+.env.*.local
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ===== 其他 =====
+*.pid
+*.seed
+*.pid.lock
+
+.sql

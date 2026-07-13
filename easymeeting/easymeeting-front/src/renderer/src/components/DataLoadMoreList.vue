@@ -1,0 +1,120 @@
+<template>
+  <div ref="scrollbarRef" @scroll="handleScroll" class="scrollbar">
+    <div class="bottom-loading" v-if="loading && loadMoreType == 1">
+      <img src="../assets/loading.gif" />数据加载中....
+    </div>
+    <div v-if="
+        loadMoreType == 1 &&
+        dataSource.pageNo >= dataSource.pageTotal &&
+        !loading &&
+        dataSource.list.length > 0
+      " class="reach-bottom">
+      没有更多数据了
+    </div>
+    <template v-for="(item, index) in dataSource.list">
+      <slot :data="item" :index="index"></slot>
+    </template>
+    <div class="bottom-loading" v-if="loading && loadMoreType == 0">
+      <img src="../assets/loading.gif" />数据加载中....
+    </div>
+    <div v-if="
+        loadMoreType == 0 &&
+        dataSource.pageNo >= dataSource.pageTotal &&
+        !loading &&
+        dataSource.list.length > 0
+      " class="reach-bottom">
+      没有更多数据了
+    </div>
+    <NoData v-if="dataSource.list && dataSource.list.length == 0" msg="暂无数据"> </NoData>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, getCurrentInstance, nextTick, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+const { proxy } = getCurrentInstance()
+const router = useRouter()
+
+const props = defineProps({
+  dataSource: {
+    type: Object
+  },
+  loading: {
+    type: Boolean
+  },
+  loadMoreType: {
+    type: Number,
+    default: 0
+  }
+})
+let oldScrollHeight = 0
+
+const emit = defineEmits(['loadData'])
+const handleScroll = (e) => {
+  const { scrollTop, scrollHeight, clientHeight } = e.target
+  if (props.loading) {
+    return
+  }
+
+  if (props.loadMoreType == 1 && scrollTop == 0) {
+    oldScrollHeight = scrollHeight
+    emit('loadData')
+    return
+  }
+  if (props.loadMoreType == 0 && scrollHeight - (scrollTop + clientHeight) < 1) {
+    emit('loadData')
+  }
+}
+
+const scrollbarRef = ref()
+const gotoBottom = (forceBottom = false) => {
+  const distanceToBottom =
+    scrollbarRef.value.scrollHeight -
+    (scrollbarRef.value.scrollTop + scrollbarRef.value.clientHeight)
+  if (!forceBottom && distanceToBottom > 200) {
+    return
+  }
+  scrollbarRef.value.scrollTo({
+    top: scrollbarRef.value.scrollHeight
+  })
+}
+//滚动到顶部
+const gotoTop = () => {
+  const newScrollHeight = scrollbarRef.value.scrollHeight
+  scrollbarRef.value.scrollTop = newScrollHeight - oldScrollHeight
+}
+
+defineExpose({
+  gotoBottom,
+  gotoTop
+})
+
+onMounted(async () => {
+  emit('loadData')
+})
+</script>
+
+<style lang="scss" scoped>
+.scrollbar {
+  height: 100%;
+  overflow: auto;
+  padding-bottom: 10px;
+}
+.reach-bottom {
+  text-align: center;
+  line-height: 40px;
+  color: var(--text2);
+  font-size: 12px;
+}
+.bottom-loading {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text2);
+  img {
+    width: 20px;
+    margin-right: 10px;
+  }
+}
+</style>

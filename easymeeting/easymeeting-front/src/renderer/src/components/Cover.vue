@@ -1,0 +1,143 @@
+<template>
+  <div class="image-panel" ref="coverRef" :style="{
+      'border-radius': borderRadius,
+      width: width ? width + 'px' : '100%',
+      height: scale ? width * scale + 'px' : 'auto'
+    }">
+    <el-image :lazy="lazy" :src="fileSource || fileImage" :fit="fit" v-if="fileSource || fileImage" preview-teleported
+      :preview-src-list="imageListResult" :initial-index="initialIndex">
+      <template #error>
+        <img src="../assets/404.png" class="el-image__inner" :style="{ 'object-fit': fit }" />
+      </template>
+    </el-image>
+    <div v-else class="no-image">请选择图片</div>
+  </div>
+</template>
+
+<script setup>
+import { progressProps } from 'element-plus'
+import { ref, reactive, getCurrentInstance, nextTick, computed, onMounted } from 'vue'
+const { proxy } = getCurrentInstance()
+import { useRoute, useRouter } from 'vue-router'
+const route = useRoute()
+const router = useRouter()
+
+const props = defineProps({
+  source: {
+    type: [String, File]
+  },
+  width: {
+    type: Number
+  },
+  fit: {
+    type: String,
+    default: 'scale-down'
+  },
+  preview: {
+    type: Boolean,
+    default: false
+  },
+  borderRadius: {
+    type: String,
+    default: '5px'
+  },
+  lazy: {
+    type: Boolean,
+    default: true
+  },
+  scale: {
+    type: Number
+  },
+  initialIndex: {
+    type: Number,
+    default: 0
+  },
+  imageList: {
+    type: Array
+  }
+})
+
+const fileImage = ref()
+const fileSource = computed(() => {
+  //不显示图片
+  if (!props.source) {
+    fileImage.value = null
+    return null
+  }
+  //文件类型
+  if (props.source instanceof File) {
+    let img = new FileReader()
+    img.readAsDataURL(props.source)
+    img.onload = ({ target }) => {
+      fileImage.value = target.result
+    }
+    return
+  }
+  if (typeof props.source === 'string') {
+    return props.source
+  }
+})
+//图片预览
+const imageListResult = computed(() => {
+  if (!props.preview) {
+    return []
+  }
+  if (props.imageList) {
+    const result = props.imageList.map((item) => {
+      return proxy.Api.getResource + item.replace(proxy.imageThumbnailSuffix, '')
+    })
+    return result
+  }
+  const sourceImg = proxy.Api.getResource + props.source.replace(proxy.imageThumbnailSuffix, '')
+  return [sourceImg]
+})
+
+const coverRef = ref()
+</script>
+
+<style lang="scss" scoped>
+.image-panel {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  background: #f8f8f8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  :deep(.el-image) {
+    width: 100%;
+    height: 100%;
+  }
+  :deep(.is-loading) {
+    display: none;
+  }
+  :deep(.el-image__wrapper) {
+    position: relative;
+    vertical-align: top;
+    width: 100%;
+    height: 100%;
+    display: flex;
+  }
+  .icon-image-error {
+    margin: 0px auto;
+    font-size: 20px;
+    color: #838383;
+    height: 100%;
+  }
+  .loading {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    img {
+      width: 20px;
+    }
+  }
+  .no-image {
+    text-align: center;
+    color: #9f9f9f;
+  }
+}
+</style>

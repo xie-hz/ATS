@@ -1,0 +1,154 @@
+<template>
+  <div class="main-body">
+    <div class="left-panel">
+      <div class="quick-btns">
+        <div :class="['btn', meetingStore.inMeeting ? 'btn-disable' : '']" @click="addMeeting(0)">
+          <div class="iconfont icon-add"></div>
+          <div class="name">加入会议</div>
+        </div>
+        <div :class="['btn', meetingStore.inMeeting ? 'btn-disable' : '']" @click="quickMeeting">
+          <div class="iconfont icon-quick"></div>
+          <div class="name">快速会议</div>
+          <div class="btn-disable" v-if="meetingStore.inMeeting"></div>
+        </div>
+        <div class="btn" @click="reserveMeeting">
+          <div class="iconfont icon-ok"></div>
+          <div class="name">预定会议</div>
+        </div>
+        <div :class="['btn', meetingStore.inMeeting ? 'btn-disable' : '']" @click="addMeeting(1)">
+          <div class="iconfont icon-share-screen"></div>
+          <div class="name">共享屏幕</div>
+        </div>
+      </div>
+    </div>
+    <div class="right-panel">
+      <Today></Today>
+    </div>
+    <Titlebar></Titlebar>
+  </div>
+  <AddMeeting ref="addMeetingRef" @joinMeeting="joinMeetingHandler"></AddMeeting>
+  <QuickMeeting ref="quickMeetingRef" @joinMeeting="joinMeetingHandler"></QuickMeeting>
+</template>
+
+<script setup>
+import MeetingReserve from './reserve/MeetingReserve.vue'
+import Today from './Today.vue'
+import QuickMeeting from './QuickMeeting.vue'
+import AddMeeting from './AddMeeting.vue'
+import { ref, reactive, getCurrentInstance, nextTick } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+const { proxy } = getCurrentInstance()
+const router = useRouter()
+const route = useRoute()
+
+import { useMeetingStore } from '@/stores/MeetingStore'
+const meetingStore = useMeetingStore()
+
+const addMeetingRef = ref()
+const addMeeting = (type) => {
+  if (meetingStore.inMeeting) {
+    return
+  }
+  addMeetingRef.value.show({ addType: type })
+}
+
+const quickMeetingRef = ref()
+const quickMeeting = () => {
+  if (meetingStore.inMeeting) {
+    return
+  }
+  quickMeetingRef.value.show()
+}
+
+const joinMeetingHandler = async (addType = 0, screenId = '') => {
+  window.electron.ipcRenderer.send('openWindow', {
+    title: '会议详情',
+    windowId: 'meeting',
+    path: '/meeting',
+    data: {
+      addType,
+      screenId
+    },
+    width: 1310,
+    height: 800,
+    maximizable: true
+  })
+}
+
+const reserveMeeting = () => {
+  window.electron.ipcRenderer.send('openWindow', {
+    title: '预定会议',
+    windowId: 'meetingReserve',
+    path: '/meetingReserve',
+    width: 375,
+    height: 700,
+    maximizable: false
+  })
+}
+</script>
+<style lang="scss" scoped>
+.main-body {
+  display: flex;
+  height: calc(100vh - 2px);
+  -webkit-app-region: drag;
+  .left-panel {
+    width: 40%;
+    border-right: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .quick-btns {
+    margin: 0px auto;
+    text-align: center;
+    width: 200px;
+    grid-template-columns: repeat(2, 1fr);
+    display: grid;
+    grid-gap: 30px;
+    .btn {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      -webkit-app-region: no-drag;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      &:hover {
+        opacity: 0.9;
+      }
+      .iconfont {
+        width: 65px;
+        height: 65px;
+        background: var(--blue);
+        color: #fff;
+        font-weight: bold;
+        font-size: 35px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+      }
+      .name {
+        margin-top: 10px;
+        font-size: 13px;
+      }
+    }
+    .btn-disable {
+      opacity: 0.5;
+      cursor: not-allowed;
+      &:hover {
+        opacity: 0.5;
+      }
+    }
+  }
+  .right-panel {
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    text-align: left;
+  }
+}
+</style>

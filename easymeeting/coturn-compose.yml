@@ -1,0 +1,18 @@
+# coturn TURN 服务器（生产环境 WebRTC NAT 穿透）
+#
+# 候选人与面试官可能处于不同企业/家庭网络，STUN 在对称型 NAT 下无法打通，
+# 需 TURN 中继。本文件用 docker 启动 coturn。
+#
+# 启动后，在 easymeeting-web 构建时设置：
+#   VITE_TURN_URL=turn:<user>:<pass>@<服务器公网IP>:3478
+#
+# 注意：生产应配置静态长期凭证，并开放 3478(UDP/TCP) + 49152-65535(UDP relay) 端口。
+
+services:
+  coturn:
+    image: coturn/coturn:latest
+    restart: always
+    network_mode: host
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
