@@ -181,9 +181,22 @@ def send_interview_assigned_email(
     job_title: str,
     scheduled_time,
     round: int,
+    meeting_no: str | None = None,
+    meeting_password: str | None = None,
 ) -> None:
     """Notify an interviewer they've been assigned an interview."""
     when = scheduled_time.strftime("%Y-%m-%d %H:%M") if scheduled_time else "待定"
+    if meeting_no:
+        meeting_block = (
+            f"<p>本次面试为视频面试，请按时通过浏览器加入：</p>"
+            f"<p>会议号：<strong>{meeting_no}</strong><br>"
+            f"会议密码：<strong>{meeting_password or ''}</strong><br>"
+            f"入会链接：<a href=\"{settings.EASYMEETING_WEB_URL}"
+            f"?meetingNo={meeting_no}&password={meeting_password or ''}\">"
+            f"{settings.EASYMEETING_WEB_URL}</a></p>"
+        )
+    else:
+        meeting_block = ""
     _send(
         email_to=email_to,
         subject=f"【{settings.PROJECT_NAME}】您有一场新的面试",
@@ -194,6 +207,7 @@ def send_interview_assigned_email(
             f"职位：{job_title}<br>"
             f"第 {round} 轮<br>"
             f"时间：<strong>{when}</strong></p>"
+            f"{meeting_block}"
             f"<p>请在面试完成后及时提交评价。</p>"
         ),
     )

@@ -22,23 +22,27 @@ logger = structlog.get_logger()
 _JOIN_TYPE_PASSWORD = 1
 
 
-def create_meeting(*, ats_business_id: str, meeting_name: str) -> dict | None:
+def create_meeting(*, ats_business_id: str, meeting_name: str, start_time=None, host_email: str | None = None) -> dict | None:
     """Create an EasyMeeting interview meeting.
 
-    Returns {"meetingId", "meetingNo", "joinPassword"} on success, None on
-    failure (so the caller can proceed without a meeting).
+    host_email: the current HR's email. EasyMeeting looks it up in user_info
+    to find the userId (host). If not found, falls back to admin.
+    start_time: the interview's scheduled time (datetime), for the 1-hour window.
     """
     try:
+        form_data = {
+            "hostEmail": host_email or settings.EASYMEETING_HOST_USER_ID,
+            "meetingName": meeting_name,
+            "joinType": _JOIN_TYPE_PASSWORD,
+            "joinPassword": _gen_password(),
+            "atsBusinessId": ats_business_id,
+        }
+        if start_time:
+            form_data["startTime"] = start_time.strftime("%Y-%m-%d %H:%M:%S")
         resp = httpx.post(
             f"{settings.EASYMEETING_API_URL}/create",
             headers={"X-API-Key": settings.EASYMEETING_API_KEY},
-            data={
-                "hostUserId": settings.EASYMEETING_HOST_USER_ID,
-                "meetingName": meeting_name,
-                "joinType": _JOIN_TYPE_PASSWORD,
-                "joinPassword": _gen_password(),
-                "atsBusinessId": ats_business_id,
-            },
+            data=form_data,
             timeout=5.0,
         )
         body = resp.json()

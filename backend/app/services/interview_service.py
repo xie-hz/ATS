@@ -127,7 +127,7 @@ def get_interview(
 
 
 def create_interview(
-    *, session: Session, interview_in: InterviewCreate
+    *, session: Session, interview_in: InterviewCreate, host_email: str | None = None
 ) -> Interview:
     if not session.get(Application, interview_in.application_id):
         raise not_found("Application")
@@ -178,6 +178,8 @@ def create_interview(
     meeting = easymeeting_service.create_meeting(
         ats_business_id=str(iv.id),
         meeting_name=f"{job_title} 第{iv.round}轮面试",
+        start_time=iv.scheduled_time,
+        host_email=host_email,
     )
     if meeting:
         iv.meeting_id = meeting["meeting_id"]
@@ -210,6 +212,8 @@ def create_interview(
                 job_title=job_title,
                 scheduled_time=iv.scheduled_time,
                 round=iv.round,
+                meeting_no=iv.meeting_no,
+                meeting_password=iv.meeting_password,
             )
     # 安排面试后，申请自动进入面试阶段
     app = session.get(Application, iv.application_id)

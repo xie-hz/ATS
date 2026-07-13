@@ -56,10 +56,11 @@ def list_interviews(
 )
 def create_interview(
     session: SessionDep,
+    current_user: Annotated[User, Depends(require_permission(Permissions.INTERVIEW_CREATE))],
     interview_in: InterviewCreate,
 ) -> Any:
     iv = interview_service.create_interview(
-        session=session, interview_in=interview_in
+        session=session, interview_in=interview_in, host_email=current_user.email
     )
     return InterviewPublic.model_validate(iv)
 
