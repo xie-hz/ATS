@@ -478,6 +478,10 @@ class Interview(SQLModel, table=True):
     status: InterviewStatus = Field(
         default=InterviewStatus.SCHEDULED, sa_type=SAEnum(InterviewStatus)
     )
+    # EasyMeeting 视频面试关联（安排面试时由 ATS 调 EasyMeeting 开放接口创建）
+    meeting_id: str | None = Field(default=None, max_length=64)
+    meeting_no: str | None = Field(default=None, max_length=32)
+    meeting_password: str | None = Field(default=None, max_length=16)
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -503,6 +507,10 @@ class InterviewPublic(SQLModel):
     candidate_name: str = ""
     job_title: str = ""
     job_id: uuid.UUID | None = None
+    # EasyMeeting 视频会议关联（候选人与面试官凭会议号+密码入会）
+    meeting_id: str | None = None
+    meeting_no: str | None = None
+    meeting_password: str | None = None
 
 
 class InterviewsPublic(SQLModel):

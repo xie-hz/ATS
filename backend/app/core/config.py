@@ -87,6 +87,16 @@ class Settings(BaseSettings):
     # with a warning so uploads never hard-fail on a misconfigured environment.
     STORAGE_BACKEND: str = "local"
 
+    # EasyMeeting integration (video interview). ATS calls the open API to create
+    # a meeting when an interview is scheduled; EasyMeeting calls the webhook back
+    # when the meeting ends/is cancelled.
+    EASYMEETING_API_URL: str = "http://localhost:6060/api/openapi/meeting"
+    EASYMEETING_API_KEY: str = "ats-easymeeting-secret-key"
+    # EasyMeeting userId of the HR who acts as meeting host (代建模式 hostUserId).
+    EASYMEETING_HOST_USER_ID: str = "HR_DEFAULT"
+    # EasyMeeting Web 前端地址（发给候选人/面试官的入会链接）。
+    EASYMEETING_WEB_URL: str = "http://localhost:5174"
+
     SMTP_TLS: bool = True
     SMTP_SSL: bool = False
     SMTP_PORT: int = 587

@@ -24,7 +24,7 @@ from app.models import (
     Job,
     User,
 )
-from app.services import email_service, notification_service
+from app.services import easymeeting_service, email_service, notification_service
 from app.services.base import get_scope, not_found
 
 
@@ -173,6 +173,19 @@ def create_interview(
     cand_name, job_title, cand_email = email_service.get_app_context(
         session=session, application_id=iv.application_id
     )
+    # Create an EasyMeeting video room for this interview (non-fatal: if
+    # EasyMeeting is down the interview is still scheduled, just no meeting link).
+    meeting = easymeeting_service.create_meeting(
+        ats_business_id=str(iv.id),
+        meeting_name=f"{job_title} 第{iv.round}轮面试",
+    )
+    if meeting:
+        iv.meeting_id = meeting["meeting_id"]
+        iv.meeting_no = meeting["meeting_no"]
+        iv.meeting_password = meeting["meeting_password"]
+        session.add(iv)
+        session.commit()
+        session.refresh(iv)
     when = iv.scheduled_time.strftime("%Y-%m-%d %H:%M")
     # Notify the assigned interviewer (in-app).
     if iv.interviewer_id:
@@ -216,6 +229,8 @@ def create_interview(
             job_title=job_title,
             scheduled_time=iv.scheduled_time,
             round=iv.round,
+            meeting_no=iv.meeting_no,
+            meeting_password=iv.meeting_password,
         )
     return iv
 
@@ -253,6 +268,9 @@ def cancel_interview(
     session.add(iv)
     session.commit()
     session.refresh(iv)
+    # 同步取消 EasyMeeting 视频会议（非致命）
+    if iv.meeting_id:
+        easymeeting_service.cancel_meeting(meeting_id=iv.meeting_id)
     # 取消面试后，如果申请在面试阶段且没有其他活跃面试，回筛选
     app = session.get(Application, iv.application_id)
     if app and app.stage == ApplicationStage.INTERVIEW:

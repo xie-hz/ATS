@@ -1,5 +1,8 @@
 from fastapi import APIRouter
 
+from app.api.routes import (
+    integrations,
+)
 from app.api.routes.admin import (
     analytics as admin_analytics,
 )
@@ -66,3 +69,6 @@ api_router.include_router(portal_auth.router)
 api_router.include_router(portal_applications.router)
 api_router.include_router(portal_offers.router)
 api_router.include_router(portal_me.router)
+
+# Integration webhooks (external systems -> ATS)
+api_router.include_router(integrations.router)

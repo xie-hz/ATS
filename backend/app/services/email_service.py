@@ -123,8 +123,22 @@ def send_interview_scheduled_email(
     job_title: str,
     scheduled_time,
     round: int,
+    meeting_no: str | None = None,
+    meeting_password: str | None = None,
 ) -> None:
     when = scheduled_time.strftime("%Y-%m-%d %H:%M") if scheduled_time else "待定"
+    # Optional video meeting block (when EasyMeeting integration is active).
+    if meeting_no:
+        meeting_block = (
+            f"<p>本次面试为视频面试，请按时通过浏览器加入：</p>"
+            f"<p>会议号：<strong>{meeting_no}</strong><br>"
+            f"会议密码：<strong>{meeting_password or ''}</strong><br>"
+            f"入会链接：<a href=\"{settings.EASYMEETING_WEB_URL}"
+            f"?meetingNo={meeting_no}&password={meeting_password or ''}\">"
+            f"{settings.EASYMEETING_WEB_URL}</a></p>"
+        )
+    else:
+        meeting_block = ""
     _send(
         email_to=email_to,
         subject=f"【{settings.PROJECT_NAME}】面试邀请",
@@ -132,6 +146,7 @@ def send_interview_scheduled_email(
             _greeting(recipient_name)
             + f"<p>您对「{job_title}」的申请已进入面试环节。</p>"
             f"<p>第 {round} 轮面试时间：<strong>{when}</strong></p>"
+            f"{meeting_block}"
             f"<p>请准时参加，祝您面试顺利！</p>"
         ),
     )
