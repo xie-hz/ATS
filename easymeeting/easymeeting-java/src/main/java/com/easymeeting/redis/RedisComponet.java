@@ -112,8 +112,27 @@ public class RedisComponet {
 
     public List<MeetingMemberDto> getMeetingMemberList(String meetingId) {
         List<MeetingMemberDto> meetingMemberDtoList = redisUtils.hvals(Constants.REDIS_KEY_MEETING_ROOM + meetingId);
-        meetingMemberDtoList = meetingMemberDtoList.stream().sorted(Comparator.comparing(MeetingMemberDto::getJoinTime)).collect(Collectors.toList());
+        // 只返回正常在会的成员，过滤已退出/被踢/被拉黑的（避免断线重连后显示重复）
+        meetingMemberDtoList = meetingMemberDtoList.stream()
+                .filter(item -> MeetingMemberStatusEnum.NORMAL.getStatus().equals(item.getStatus()))
+                .sorted(Comparator.comparing(MeetingMemberDto::getJoinTime))
+                .collect(Collectors.toList());
         return meetingMemberDtoList;
+    }
+
+    /**
+     * 清理会议室中非 NORMAL 状态的成员（已退出/被踢/被拉黑），
+     * 避免断线重连产生新 userId 后旧记录残留。
+     */
+    public void cleanExitedMembers(String meetingId) {
+        List<MeetingMemberDto> all = redisUtils.hvals(Constants.REDIS_KEY_MEETING_ROOM + meetingId);
+        List<String> toRemove = all.stream()
+                .filter(item -> !MeetingMemberStatusEnum.NORMAL.getStatus().equals(item.getStatus()))
+                .map(MeetingMemberDto::getUserId)
+                .collect(Collectors.toList());
+        if (!toRemove.isEmpty()) {
+            redisUtils.hdel(Constants.REDIS_KEY_MEETING_ROOM + meetingId, toRemove.toArray(new String[0]));
+        }
     }
 
     public MeetingMemberDto getMeetingMember(String meetingId, String userId) {

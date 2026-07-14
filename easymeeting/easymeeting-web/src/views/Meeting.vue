@@ -16,6 +16,7 @@ const members = ref([]) // other participants (MeetingMemberDto[], excludes self
 const micOpen = ref(true)
 const cameraOpen = ref(true)
 const localReady = ref(false)
+const sharingScreen = ref(false)
 
 // 右侧面板：参会人 / 聊天
 const panelOpen = ref(false)
@@ -25,6 +26,8 @@ const chatInput = ref("")
 const chatScrollRef = ref(null)
 
 let localStream = null
+let cameraStream = null // 保存摄像头流，用于停止共享屏幕后恢复
+let screenStream = null
 const pcs = new Map() // userId -> RTCPeerConnection
 const videoRefs = {} // userId -> <video> element (remote)
 
@@ -239,6 +242,66 @@ function toggleCamera() {
   sendVideoChange(cameraOpen.value).catch(() => {})
 }
 
+// ---- 屏幕共享 ----
+
+async function toggleScreenShare() {
+  if (sharingScreen.value) {
+    stopScreenShare()
+  } else {
+    await startScreenShare()
+  }
+}
+
+async function startScreenShare() {
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+  } catch (e) {
+    ElMessage.warning("屏幕共享已取消")
+    return
+  }
+  // 保存当前摄像头流（用于恢复）
+  if (localStream) {
+    cameraStream = localStream
+  }
+  // 用屏幕流替换 localStream 的视频轨道
+  const screenTrack = screenStream.getVideoTracks()[0]
+  localStream = new MediaStream([screenTrack, ...(cameraStream ? cameraStream.getAudioTracks() : [])])
+  // 更新本地预览
+  const localEl = document.getElementById("video-local")
+  if (localEl) localEl.srcObject = localStream
+  // 替换所有 P2P 连接的视频轨道
+  pcs.forEach((pc) => {
+    const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video")
+    if (sender) sender.replaceTrack(screenTrack)
+  })
+  // 用户在浏览器原生 UI 点"停止共享"时也要处理
+  screenTrack.onended = () => stopScreenShare()
+  sharingScreen.value = true
+  cameraOpen.value = true
+}
+
+function stopScreenShare() {
+  if (!screenStream) return
+  screenStream.getTracks().forEach((t) => t.stop())
+  screenStream = null
+  // 恢复摄像头流
+  if (cameraStream) {
+    localStream = cameraStream
+    const localEl = document.getElementById("video-local")
+    if (localEl) localEl.srcObject = localStream
+    // 恢复所有 P2P 连接的视频轨道
+    const cameraTrack = cameraStream.getVideoTracks()[0]
+    if (cameraTrack) {
+      pcs.forEach((pc) => {
+        const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video")
+        if (sender) sender.replaceTrack(cameraTrack)
+      })
+    }
+    cameraStream = null
+  }
+  sharingScreen.value = false
+}
+
 async function leave() {
   try {
     await exitMeeting()
@@ -253,6 +316,10 @@ function cleanup() {
   closeSignaling()
   pcs.forEach((pc) => pc.close())
   pcs.clear()
+  if (screenStream) {
+    screenStream.getTracks().forEach((t) => t.stop())
+    screenStream = null
+  }
   if (localStream) {
     localStream.getTracks().forEach((t) => t.stop())
     localStream = null
@@ -336,6 +403,9 @@ function cleanup() {
       </el-button>
       <el-button :type="cameraOpen ? 'primary' : 'info'" @click="toggleCamera">
         {{ cameraOpen ? "摄像头开" : "摄像头关" }}
+      </el-button>
+      <el-button :type="sharingScreen ? 'warning' : 'default'" @click="toggleScreenShare">
+        {{ sharingScreen ? "停止共享" : "共享屏幕" }}
       </el-button>
       <el-button @click="togglePanel('members')">参会人</el-button>
       <el-button @click="togglePanel('chat')">聊天</el-button>

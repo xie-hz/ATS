@@ -259,6 +259,8 @@ public class MeetingInfoServiceImpl implements MeetingInfoService {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
         this.checkMeetingJoin(meetingId, userId);
+        // 清理已退出/被踢的旧成员记录，避免断线重连产生新 userId 后残留重复
+        redisComponet.cleanExitedMembers(meetingId);
         MemberTypeEnum memberTypeEnum = meetingInfo.getCreateUserId().equals(userId) ? MemberTypeEnum.COMPERE : MemberTypeEnum.NORMAL;
         this.addMeetingMember(meetingId, userId, nickName, memberTypeEnum.getType(), identityType);
         this.add2Meeting(meetingId, userId, nickName, sex, memberTypeEnum.getType(), openVideo, identityType);

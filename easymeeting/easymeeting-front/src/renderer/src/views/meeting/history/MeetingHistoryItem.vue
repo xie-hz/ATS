@@ -9,6 +9,7 @@
       <div class="content-panel">
         <div class="meeting-name-panel">
           <div class="meeting-name">{{ data.meetingName }}</div>
+          <div class="rejoin-btn" v-if="data.status === 0" @click="reJoinMeeting">进入会议</div>
           <div class="meeting-op">
             <div class="iconfont icon-close" @click="delMeetingRecord"></div>
             <div class="iconfont icon-chat" @click="showMeetingMessage"></div>
@@ -89,6 +90,29 @@ const delMeetingRecord = () => {
     }
   })
 }
+
+// 重新进入未结束的会议
+const reJoinMeeting = async () => {
+  let result = await proxy.Request({
+    url: proxy.Api.preJoinMeeting,
+    params: {
+      meetingNo: props.data.meetingNo,
+      nickName: userInfoStore.userInfo.nickName
+    }
+  })
+  if (!result) {
+    return
+  }
+  // 打开会议窗口
+  window.electron.ipcRenderer.send('openWindow', {
+    title: '会议详情',
+    windowId: 'meeting',
+    path: '/meeting',
+    width: 1310,
+    height: 800,
+    maximizable: true
+  })
+}
 </script>
 
 <style lang="scss" scoped>
@@ -132,6 +156,19 @@ const delMeetingRecord = () => {
           height: 28px;
           width: 0;
           flex: 1;
+        }
+        .rejoin-btn {
+          background: var(--blue);
+          color: #fff;
+          padding: 4px 12px;
+          border-radius: 4px;
+          font-size: 13px;
+          margin-right: 10px;
+          cursor: pointer;
+          align-self: center;
+          &:hover {
+            opacity: 0.9;
+          }
         }
         .meeting-op {
           display: none;

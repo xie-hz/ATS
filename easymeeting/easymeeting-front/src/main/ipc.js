@@ -35,15 +35,15 @@ const openWindow = ({ windowId, title = "详情", path, width = 960, height = 72
         newWindow = new BrowserWindow({
             width,
             height,
-            minHeight: height,
-            minWidth: width,
+            minWidth: 800,
+            minHeight: 500,
             show: false,
             autoHideMenuBar: true,
             frame: false,
             //transparent: true,
             fullscreenable: false,
             maximizable,
-            resizable: maximizable,
+            resizable: true,
             ...(process.platform === 'linux' ? { icon } : {}),
             webPreferences: {
                 preload: join(__dirname, '../preload/index.js'),
