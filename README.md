@@ -22,10 +22,4 @@
 - **前端**：React + TypeScript + TanStack Router/Query + shadcn/ui + Tailwind CSS + recharts
 - **部署**：Docker Compose + Traefik
 
-## 待实现
 
-- MinIO 文件存储（当前本地存储）
-- 全文搜索（PostgreSQL tsvector）
-- Redis 缓存与分布式锁
-- 人才库归档
-- AI 简历解析与候选人匹配
