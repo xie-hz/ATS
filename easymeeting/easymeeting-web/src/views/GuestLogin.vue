@@ -9,6 +9,7 @@ const form = ref({
   meetingNo: "",
   password: "",
   nickName: "",
+  email: "",
 })
 const loading = ref(false)
 
@@ -19,8 +20,9 @@ async function submit() {
   }
   loading.value = true
   try {
-    const data = await guestJoin(form.value.meetingNo, form.value.password, form.value.nickName)
+    const data = await guestJoin(form.value.meetingNo, form.value.password, form.value.nickName, form.value.email)
     setToken(data.token)
+    // App.vue 的 onJoined 会把 session 存入 sessionStorage，刷新可恢复
     emit("joined", data)
   } catch (e) {
     ElMessage.error(e.message || "入会失败")
@@ -44,6 +46,9 @@ async function submit() {
         </el-form-item>
         <el-form-item label="您的昵称">
           <el-input v-model="form.nickName" placeholder="如：候选人张三" clearable />
+        </el-form-item>
+        <el-form-item label="邮箱">
+          <el-input v-model="form.email" placeholder="用于标识身份，刷新可恢复" clearable />
         </el-form-item>
         <el-button type="primary" :loading="loading" style="width: 100%" @click="submit">
           加入会议

@@ -79,7 +79,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, getCurrentInstance, nextTick, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, getCurrentInstance, nextTick, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 const { proxy } = getCurrentInstance()
 const router = useRouter()
@@ -279,6 +279,7 @@ const joinMeeting = async (videoOpen) => {
 }
 
 const peerConnectionMap = new Map()
+const remoteStreams = new Map() // userId -> MediaStream（已收到的远端流，避免 ontrack 早于视频元素渲染时丢失）
 const SIGNAL_TYPE_OFFER = 'offer'
 const SIGNAL_TYPE_ANSWER = 'answer'
 const SIGNAL_TYPE_CANDIDATE = 'candidate'
@@ -295,13 +296,10 @@ const createPeerConnection = (member) => {
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   })
 
-  if (!props.deviceInfo.cameraEnable) {
-    peerConnection.addTransceiver('video', { direction: 'recvonly' })
-  }
-
-  if (!props.deviceInfo.micEnable) {
-    peerConnection.addTransceiver('audio', { direction: 'recvonly' })
-  }
+  // localStream 始终包含视频+音频轨道（无摄像头时为空画布轨道、无麦克风时为静音轨道）。
+  // 不再为"关闭的设备"添加 recvonly transceiver——否则 addTrack 会复用它，
+  // 导致 offer 的视频 m-line 变成 recvonly，本端不发送视频，对端 ontrack 不触发（黑屏），
+  // 且屏幕共享时没有 video sender 可 replaceTrack。统一用 addTrack 建立 sendrecv 轨道。
   // ICE候选处理
   peerConnection.onicecandidate = (e) => {
     if (e.candidate) {
@@ -315,16 +313,37 @@ const createPeerConnection = (member) => {
   }
   // 处理远程视频流
   peerConnection.ontrack = (event) => {
-    const remoteVideo = document.querySelector('#member_' + member.userId)
-    console.log(event.streams)
-    remoteVideo.srcObject = event.streams[0]
+    // 优先用发送方关联的流；若没有则把轨道挂到已有/新建流上
+    let stream = event.streams[0]
+    if (!stream) {
+      stream = remoteStreams.get(member.userId) || new MediaStream()
+      if (event.track && !stream.getTracks().includes(event.track)) stream.addTrack(event.track)
+    }
+    remoteStreams.set(member.userId, stream)
+    bindRemoteVideo(member.userId)
+  }
+  // ICE 连通后再次绑定，确保开始解码渲染
+  peerConnection.onconnectionstatechange = () => {
+    if (peerConnection.connectionState === 'connected') bindRemoteVideo(member.userId)
   }
   localStream.getTracks().forEach((track) => {
-    console.log(track)
     peerConnection.addTrack(track, localStream)
   })
   peerConnectionMap.set(member.userId, peerConnection)
   return peerConnection
+}
+
+// 把已收到的远端流绑定到对应视频元素；元素可能尚未渲染，调用方在成员列表变化后会重绑
+const bindRemoteVideo = (userId) => {
+  const stream = remoteStreams.get(userId)
+  if (!stream) return
+  nextTick(() => {
+    const remoteVideo = document.querySelector('#member_' + userId)
+    if (remoteVideo) {
+      if (remoteVideo.srcObject !== stream) remoteVideo.srcObject = stream
+      remoteVideo.play().catch(() => {})
+    }
+  })
 }
 
 //用户加入
@@ -387,6 +406,27 @@ const onPeerConnection = async ({ sendUserId, receiveUserId, messageContent }) =
   try {
     switch (messageContent.signalType) {
       case SIGNAL_TYPE_OFFER: {
+        // 如果 PC 已连接，忽略重复 offer
+        if (peerConnection.connectionState === 'connected') {
+          break
+        }
+        // 如果 PC 处于 have-local-offer 状态（glare），关闭重建
+        if (peerConnection.signalingState === 'have-local-offer') {
+          peerConnection.close()
+          peerConnectionMap.delete(sendUserId)
+          remoteStreams.delete(sendUserId)
+          const newPc = createPeerConnection(member)
+          await newPc.setRemoteDescription(signalData)
+          const answer = await newPc.createAnswer()
+          await newPc.setLocalDescription(answer)
+          sendPeerMessage({
+            sendUserId: receiveUserId,
+            receiveUserId: sendUserId,
+            signalType: SIGNAL_TYPE_ANSWER,
+            signalData: answer
+          })
+          break
+        }
         //设置offer
         await peerConnection.setRemoteDescription(signalData)
         //创建answer
@@ -456,7 +496,10 @@ const onUserLeave = (messageContent) => {
   memberList.value = memberList.value.filter((item) => item.userId != exitUserId)
   meetingStore.setAllMemberList(meetingMemberList)
   meetingStore.setMemberList(memberList.value)
+  const exitPc = peerConnectionMap.get(exitUserId)
+  if (exitPc) exitPc.close()
   peerConnectionMap.delete(exitUserId)
+  remoteStreams.delete(exitUserId)
 }
 
 const meetingFinish = (messageContent) => {
@@ -535,6 +578,17 @@ const memberVideoChange = (sendUserId, openVideo) => {
     return item.userId === sendUserId
   })
   member.openVideo = openVideo
+
+  // replaceTrack 后接收方视频元素可能不自动刷新（黑屏），强制重绑流触发重新解码
+  nextTick(() => {
+    const remoteVideo = document.querySelector('#member_' + sendUserId)
+    if (remoteVideo) {
+      const current = remoteVideo.srcObject
+      remoteVideo.srcObject = null
+      remoteVideo.srcObject = current
+      remoteVideo.play().catch(() => {})
+    }
+  })
 
   //选中的用户等于成员，就改变状态
   if (currentSelectUserId.value == member.userId) {
@@ -639,6 +693,14 @@ onMounted(() => {
   mitter.on('cameraSwitch', cameraSwitchHandler)
   initLocalStream()
   initMessageListener()
+})
+
+// 成员列表渲染后，把已收到的远端流重新绑定到对应视频元素。
+// 修复竞态：ontrack 可能在 <video> 元素渲染出来之前触发，导致 srcObject 没绑上（黑屏）。
+watch(memberList, () => {
+  nextTick(() => {
+    remoteStreams.forEach((_, userId) => bindRemoteVideo(userId))
+  })
 })
 
 onUnmounted(() => {

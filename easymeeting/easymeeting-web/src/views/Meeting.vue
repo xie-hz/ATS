@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from "vue"
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from "vue"
 import { ElMessage } from "element-plus"
 import { joinMeeting, exitMeeting, sendVideoChange, sendMessage } from "../api"
 import { connectSignaling, sendPeer, closeSignaling } from "../ws"
@@ -29,6 +29,7 @@ let localStream = null
 let cameraStream = null // 保存摄像头流，用于停止共享屏幕后恢复
 let screenStream = null
 const pcs = new Map() // userId -> RTCPeerConnection
+const remoteStreams = new Map() // userId -> MediaStream（已收到的远端流，避免 ontrack 早于视频元素渲染时丢失）
 const videoRefs = {} // userId -> <video> element (remote)
 
 // ICE servers: STUN + optional TURN (coturn, Phase 4). See src/config.js.
@@ -36,6 +37,14 @@ const ICE_SERVERS = iceServers
 
 onMounted(start)
 onBeforeUnmount(cleanup)
+
+// 成员列表渲染后，把已收到的远端流重新绑定到对应视频元素。
+// 修复竞态：ontrack 可能在 members 列表渲染出 <video> 元素之前触发，导致 srcObject 没绑上（黑屏）。
+watch(members, () => {
+  nextTick(() => {
+    remoteStreams.forEach((_, userId) => bindRemoteVideo(userId))
+  })
+})
 
 async function start() {
   try {
@@ -76,7 +85,6 @@ async function start() {
 function onJoin(content) {
   const list = content.meetingMemberList || []
   const newMember = content.newMember
-  // 更新在会成员（排除自己，仅状态正常）
   members.value = list.filter((m) => m.userId !== me.userId && m.status === 1)
   nextTick(bindRemoteVideos)
   if (newMember && newMember.userId === me.userId) {
@@ -86,7 +94,7 @@ function onJoin(content) {
       sendOffer(m.userId)
     })
   } else if (newMember && newMember.userId !== me.userId) {
-    // 别人加入：建 PC 等对方 offer
+    // 别人加入：建 PC 等对方 offer（不主动发，避免 glare 冲突）
     createPC(newMember.userId)
   }
 }
@@ -95,19 +103,35 @@ function onPeer(sendUserId, content) {
   const { signalType, signalData } = content
   let pc = pcs.get(sendUserId)
   if (signalType === "offer") {
-    if (!pc) pc = createPC(sendUserId)
+    // 已连接的 PC 不重建（避免反复关闭导致视频断）
+    if (pc && pc.connectionState === "connected") {
+      return
+    }
+    // 旧 PC 关闭重建（对方刷新/重连后发来新 offer）
+    if (pc) {
+      pc.close()
+      pcs.delete(sendUserId)
+    }
+    pc = createPC(sendUserId)
     pc.setRemoteDescription(JSON.parse(signalData))
       .then(() => pc.createAnswer())
       .then((answer) => pc.setLocalDescription(answer))
       .then(() => sendPeer(sendUserId, "answer", pc.localDescription))
   } else if (signalType === "answer") {
-    if (pc) pc.setRemoteDescription(JSON.parse(signalData))
+    if (!pc) {
+      pc = createPC(sendUserId)
+      sendOffer(sendUserId)
+      return
+    }
+    if (pc.signalingState === "have-local-offer") {
+      pc.setRemoteDescription(JSON.parse(signalData))
+    }
   } else if (signalType === "candidate") {
-    if (pc) {
+    if (pc && pc.remoteDescription) {
       try {
         pc.addIceCandidate(JSON.parse(signalData))
       } catch {
-        /* remoteDescription 尚未设置，忽略 */
+        /* ignore */
       }
     }
   }
@@ -133,6 +157,16 @@ function onFinish() {
 function onVideoChange(sendUserId, openVideo) {
   const m = members.value.find((x) => x.userId === sendUserId)
   if (m) m.openVideo = openVideo
+  // replaceTrack 后接收方视频元素可能不自动刷新，强制重绑流触发重新解码渲染
+  nextTick(() => {
+    const el = document.getElementById("video-" + sendUserId)
+    if (el) {
+      const stream = remoteStreams.get(sendUserId) || el.srcObject
+      el.srcObject = null
+      el.srcObject = stream
+      el.play().catch(() => {})
+    }
+  })
 }
 
 // ---- 聊天 ----
@@ -191,18 +225,44 @@ function createPC(userId) {
   // 本地轨道加入
   if (localStream) {
     localStream.getTracks().forEach((t) => pc.addTrack(t, localStream))
+  } else {
+    // 无本地媒体（摄像头/麦克风被拒绝）：仍要能接收对端音视频
+    pc.addTransceiver("video", { direction: "recvonly" })
+    pc.addTransceiver("audio", { direction: "recvonly" })
   }
   pc.onicecandidate = (e) => {
     if (e.candidate) sendPeer(userId, "candidate", e.candidate)
   }
   pc.ontrack = (e) => {
-    nextTick(() => {
-      const el = document.getElementById("video-" + userId)
-      if (el) el.srcObject = e.streams[0]
-    })
+    // 收到远端轨道：优先用发送方关联的流，否则把轨道挂到已有/新建流上
+    let stream = e.streams[0]
+    if (!stream) {
+      stream = remoteStreams.get(userId) || new MediaStream()
+      if (e.track && !stream.getTracks().includes(e.track)) stream.addTrack(e.track)
+    }
+    remoteStreams.set(userId, stream)
+    bindRemoteVideo(userId)
+  }
+  // ICE 连通后再次绑定，确保视频元素拿到流后开始解码渲染
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "connected") bindRemoteVideo(userId)
   }
   pcs.set(userId, pc)
   return pc
+}
+
+// 把已收到的远端流绑定到对应视频元素。元素可能尚未渲染（ontrack 早于 members 列表更新），
+// 因此调用方在 members 变化后还会统一重绑一次。
+function bindRemoteVideo(userId) {
+  const stream = remoteStreams.get(userId)
+  if (!stream) return
+  nextTick(() => {
+    const el = document.getElementById("video-" + userId)
+    if (el) {
+      if (el.srcObject !== stream) el.srcObject = stream
+      el.play().catch(() => {})
+    }
+  })
 }
 
 async function sendOffer(userId) {
@@ -219,6 +279,7 @@ function closePC(userId) {
     pc.close()
     pcs.delete(userId)
   }
+  remoteStreams.delete(userId)
 }
 
 function bindRemoteVideos() {
@@ -269,18 +330,22 @@ async function startScreenShare() {
   // 更新本地预览
   const localEl = document.getElementById("video-local")
   if (localEl) localEl.srcObject = localStream
-  // 替换所有 P2P 连接的视频轨道
+  // 替换所有 P2P 连接的视频轨道（await 确保替换完成）
+  const senders = []
   pcs.forEach((pc) => {
     const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video")
-    if (sender) sender.replaceTrack(screenTrack)
+    if (sender) senders.push(sender)
   })
+  await Promise.all(senders.map((s) => s.replaceTrack(screenTrack)))
+  // 通知其他参会者"我的视频变了"，触发他们刷新视频元素
+  sendVideoChange(true).catch(() => {})
   // 用户在浏览器原生 UI 点"停止共享"时也要处理
   screenTrack.onended = () => stopScreenShare()
   sharingScreen.value = true
   cameraOpen.value = true
 }
 
-function stopScreenShare() {
+async function stopScreenShare() {
   if (!screenStream) return
   screenStream.getTracks().forEach((t) => t.stop())
   screenStream = null
@@ -289,16 +354,20 @@ function stopScreenShare() {
     localStream = cameraStream
     const localEl = document.getElementById("video-local")
     if (localEl) localEl.srcObject = localStream
-    // 恢复所有 P2P 连接的视频轨道
+    // 恢复所有 P2P 连接的视频轨道（await 确保替换完成）
     const cameraTrack = cameraStream.getVideoTracks()[0]
     if (cameraTrack) {
+      const senders = []
       pcs.forEach((pc) => {
         const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video")
-        if (sender) sender.replaceTrack(cameraTrack)
+        if (sender) senders.push(sender)
       })
+      await Promise.all(senders.map((s) => s.replaceTrack(cameraTrack)))
     }
     cameraStream = null
   }
+  // 通知其他参会者"我的视频变了"，触发他们刷新视频元素
+  sendVideoChange(true).catch(() => {})
   sharingScreen.value = false
 }
 
@@ -316,6 +385,7 @@ function cleanup() {
   closeSignaling()
   pcs.forEach((pc) => pc.close())
   pcs.clear()
+  remoteStreams.clear()
   if (screenStream) {
     screenStream.getTracks().forEach((t) => t.stop())
     screenStream = null

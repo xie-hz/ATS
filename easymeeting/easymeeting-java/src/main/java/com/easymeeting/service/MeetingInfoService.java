@@ -82,7 +82,7 @@ public interface MeetingInfoService {
      * 访客入会：会议号+密码+昵称，签发临时 GUEST token，返回 token + 会议信息。
      * 不创建 EasyMeeting 账号。
      */
-    com.easymeeting.entity.vo.GuestJoinVO guestJoinMeeting(String meetingNo, String password, String nickName);
+    com.easymeeting.entity.vo.GuestJoinVO guestJoinMeeting(String meetingNo, String password, String nickName, String email);
 
     /**
      * 开放接口：ATS 服务账号代建面试会议，记录 hostUserId 为创建人/主持人。

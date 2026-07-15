@@ -198,7 +198,14 @@ public class MeetingInfoServiceImpl implements MeetingInfoService {
             throw new BusinessException("会议已结束");
         }
         if (!StringTools.isEmpty(tokenUserInfoDto.getCurrentMeetingId()) && !meetingInfo.getMeetingId().equals(tokenUserInfoDto.getCurrentMeetingId())) {
-            throw new BusinessException("你有未结束的会议无法加入其他会议");
+            // 检查旧会议是否真的还在进行中且用户还在里面
+            MeetingMemberDto oldMember = redisComponet.getMeetingMember(tokenUserInfoDto.getCurrentMeetingId(), userId);
+            if (oldMember != null && MeetingMemberStatusEnum.NORMAL.getStatus().equals(oldMember.getStatus())) {
+                throw new BusinessException("你有未结束的会议无法加入其他会议");
+            }
+            // 旧会议已不在或已退出，清除残留的 currentMeetingId
+            tokenUserInfoDto.setCurrentMeetingId(null);
+            redisComponet.saveTokenUserInfoDto(tokenUserInfoDto);
         }
         checkMeetingJoin(meetingInfo.getMeetingId(), userId);
         // 会议创建者和管理员免密入会
@@ -280,7 +287,7 @@ public class MeetingInfoServiceImpl implements MeetingInfoService {
     }
 
     @Override
-    public GuestJoinVO guestJoinMeeting(String meetingNo, String password, String nickName) {
+    public GuestJoinVO guestJoinMeeting(String meetingNo, String password, String nickName, String email) {
         if (StringTools.isEmpty(meetingNo) || StringTools.isEmpty(nickName)) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
@@ -300,9 +307,23 @@ public class MeetingInfoServiceImpl implements MeetingInfoService {
                 && !meetingInfo.getJoinPassword().equals(password)) {
             throw new BusinessException("入会密码不正确");
         }
-        // 生成临时访客身份：合成 userId（G 前缀 + 10 位数字，共 11 字符，≤ meeting_member.user_id 的 varchar(12)），
-        // 不写 user_info 表。G 前缀避免与纯数字的正式 userId 冲突。
-        String guestUserId = "G" + StringTools.getMeetingNoOrMeetingId();
+        // 生成访客身份：如果有邮箱，用邮箱 hash 生成确定性 userId（同一邮箱每次相同，
+        // 刷新/重入不会产生重复成员）；没邮箱则用随机数。
+        String guestUserId;
+        if (!StringTools.isEmpty(email)) {
+            // email.hashCode() 可能为负，取绝对值后模 10^10 得到 10 位数字，加 G 前缀 = 11 字符 ≤ varchar(12)
+            long hash = Math.abs((long) email.hashCode()) % 10000000000L;
+            guestUserId = "G" + String.format("%010d", hash);
+        } else {
+            guestUserId = "G" + StringTools.getMeetingNoOrMeetingId();
+        }
+        // 如果该 userId 在会议中已有旧记录（EXIT/被踢等），先清理，防止重复
+        redisComponet.cleanExitedMembers(meetingInfo.getMeetingId());
+        MeetingMemberDto existing = redisComponet.getMeetingMember(meetingInfo.getMeetingId(), guestUserId);
+        if (existing != null) {
+            // 已有同 userId 的成员（可能还在会中），从 Redis Hash 删除旧记录
+            redisComponet.removeMeetingMember(meetingInfo.getMeetingId(), guestUserId);
+        }
         String token = StringTools.getMeetingNoOrMeetingId() + StringTools.getMeetingNoOrMeetingId();
         TokenUserInfoDto tokenUserInfoDto = new TokenUserInfoDto();
         tokenUserInfoDto.setToken(token);
@@ -312,7 +333,7 @@ public class MeetingInfoServiceImpl implements MeetingInfoService {
         tokenUserInfoDto.setCurrentMeetingId(meetingInfo.getMeetingId());
         tokenUserInfoDto.setIdentityType(IdentityTypeEnum.GUEST.getType());
         tokenUserInfoDto.setAdmin(false);
-        redisComponet.saveTokenUserInfoDto(tokenUserInfoDto);
+        redisComponet.saveGuestTokenUserInfoDto(tokenUserInfoDto);
 
         GuestJoinVO vo = new GuestJoinVO();
         vo.setToken(token);
@@ -478,6 +499,9 @@ public class MeetingInfoServiceImpl implements MeetingInfoService {
         List<MeetingMemberDto> meetingMemberDtoList = redisComponet.getMeetingMemberList(meetingId);
         for (MeetingMemberDto meetingMemberDto : meetingMemberDtoList) {
             TokenUserInfoDto userInfoDto = this.redisComponet.getTokenUserInfoDtoByUserId(meetingMemberDto.getUserId());
+            if (userInfoDto == null) {
+                continue;
+            }
             userInfoDto.setCurrentMeetingId(null);
             redisComponet.saveTokenUserInfoDto(userInfoDto);
         }
@@ -495,6 +519,16 @@ public class MeetingInfoServiceImpl implements MeetingInfoService {
         Attribute<String> attribute = channel.attr(AttributeKey.valueOf(channel.id().toString()));
         String userId = attribute.get();
         if (userId == null) {
+            return;
+        }
+        // 关键修复：检查当前 channel 是否还是 USER_CONTEXT_MAP 中的那个。
+        // 如果用户已刷新/重连，新 channel 已替换旧 channel，此时旧 channel 的超时清理
+        // 不应删除 token 或退出会议，否则会把新连接也踢掉。
+        Channel currentChannel = ChannelContextUtils.USER_CONTEXT_MAP.get(userId);
+        if (currentChannel != null && !currentChannel.id().equals(channel.id())) {
+            // 旧连接被新连接替换了，只清理心跳，不动 token 和会议状态
+            log.info("用户{}的旧连接超时，但新连接已建立，跳过 token 清理和退出会议", userId);
+            redisComponet.removeUserHeartBeat(userId);
             return;
         }
         if (!StringTools.isEmpty(userId)) {

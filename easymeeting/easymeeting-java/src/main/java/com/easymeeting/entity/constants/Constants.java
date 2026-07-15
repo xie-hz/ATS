@@ -46,6 +46,9 @@ public class Constants {
      */
     public static final Integer REDIS_KEY_EXPIRES_DAY = REDIS_KEY_EXPIRES_ONE_MIN * 60 * 24;
 
+    // 访客 Token 过期时间：10 分钟（面试场景足够，超时自动清理）
+    public static final Integer REDIS_KEY_EXPIRES_GUEST_TOKEN = REDIS_KEY_EXPIRES_ONE_MIN * 10;
+
     private static final String REDIS_KEY_PREFIX = "easymeeting:";
 
     public static final String REDIS_KEY_CHECK_CODE = REDIS_KEY_PREFIX + "checkcode:";

@@ -95,8 +95,8 @@ public class MeetingInfoController extends ABaseController {
      * 供 Web 端候选人与面试官无账号入会使用。
      */
     @RequestMapping("/guestJoin")
-    public ResponseVO guestJoin(@NotEmpty String meetingNo, @NotEmpty @Size(max = 50) String nickName, String password) {
-        com.easymeeting.entity.vo.GuestJoinVO vo = meetingInfoService.guestJoinMeeting(meetingNo, password, nickName);
+    public ResponseVO guestJoin(@NotEmpty String meetingNo, @NotEmpty @Size(max = 50) String nickName, String password, String email) {
+        com.easymeeting.entity.vo.GuestJoinVO vo = meetingInfoService.guestJoinMeeting(meetingNo, password, nickName, email);
         return getSuccessResponseVO(vo);
     }
 

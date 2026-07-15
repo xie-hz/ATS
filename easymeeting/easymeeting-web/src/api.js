@@ -6,8 +6,11 @@ const BASE = "/api"
 let token = null
 export function setToken(t) {
   token = t
+  if (t) sessionStorage.setItem("em_token", t)
+  else sessionStorage.removeItem("em_token")
 }
 export function getToken() {
+  if (!token) token = sessionStorage.getItem("em_token")
   return token
 }
 
@@ -27,8 +30,8 @@ async function post(path, params = {}) {
 }
 
 // 访客入会：会议号 + 密码 + 昵称 -> 临时 GUEST token + 会议信息
-export const guestJoin = (meetingNo, password, nickName) =>
-  post("/meeting/guestJoin", { meetingNo, password, nickName })
+export const guestJoin = (meetingNo, password, nickName, email = "") =>
+  post("/meeting/guestJoin", { meetingNo, password, nickName, email })
 
 // 正式加入会议（建 WebRTC 通道前调用）
 export const joinMeeting = (videoOpen) =>

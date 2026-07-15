@@ -51,6 +51,14 @@ public class RedisComponet {
         redisUtils.setex(Constants.REDIS_KEY_WS_TOKEN_USERID + tokenUserInfoDto.getUserId(), tokenUserInfoDto.getToken(), Constants.REDIS_KEY_EXPIRES_DAY * 2);
     }
 
+    /**
+     * 保存访客 Token（短 TTL，10 分钟过期）
+     */
+    public void saveGuestTokenUserInfoDto(TokenUserInfoDto tokenUserInfoDto) {
+        redisUtils.setex(Constants.REDIS_KEY_WS_TOKEN + tokenUserInfoDto.getToken(), tokenUserInfoDto, Constants.REDIS_KEY_EXPIRES_GUEST_TOKEN);
+        redisUtils.setex(Constants.REDIS_KEY_WS_TOKEN_USERID + tokenUserInfoDto.getUserId(), tokenUserInfoDto.getToken(), Constants.REDIS_KEY_EXPIRES_GUEST_TOKEN);
+    }
+
     public TokenUserInfoDto getTokenUserInfoDtoByUserId(String userId) {
         String token = (String) redisUtils.get(Constants.REDIS_KEY_WS_TOKEN_USERID + userId);
         if (StringTools.isEmpty(token)) {
@@ -157,6 +165,13 @@ public class RedisComponet {
             return;
         }
         redisUtils.hdel(Constants.REDIS_KEY_MEETING_ROOM + meetingId, userIdList.toArray(new String[userIdList.size()]));
+    }
+
+    /**
+     * 从会议室移除指定成员（用于访客重入时清理旧记录）
+     */
+    public void removeMeetingMember(String meetingId, String userId) {
+        redisUtils.hdel(Constants.REDIS_KEY_MEETING_ROOM + meetingId, new String[]{userId});
     }
 
     public void addInviteInfo(String meetingId, String userId) {
