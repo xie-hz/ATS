@@ -38,17 +38,13 @@ def easymeeting_webhook(
         # Ack so EasyMeeting doesn't retry; nothing to update.
         return {"status": "ignored", "reason": "interview not found"}
 
-    if event == "FINISHED":
-        # Meeting ended -> mark interview conducted (COMPLETED). Feedback can
-        # still be submitted afterwards (submit_feedback is idempotent on status).
-        if iv.status == InterviewStatus.SCHEDULED:
-            iv.status = InterviewStatus.COMPLETED
-            session.add(iv)
-            session.commit()
-    elif event == "CANCELLED":
-        if iv.status == InterviewStatus.SCHEDULED:
-            iv.status = InterviewStatus.CANCELLED
-            session.add(iv)
-            session.commit()
+    # FINISHED（会议结束）：仅 ack，不推进面试状态。面试应保持 SCHEDULED，直到
+    # 面试官提交评价（submit_feedback）才进入 COMPLETED。若提前置 COMPLETED，看板
+    # 会误显示"已评价/详情"，分析与"催评价"提醒也会被绕过（二者均按
+    # SCHEDULED + 已过预约时间 = 待评价 工作）。会议结束不等于已评价。
+    if event == "CANCELLED" and iv.status == InterviewStatus.SCHEDULED:
+        iv.status = InterviewStatus.CANCELLED
+        session.add(iv)
+        session.commit()
 
     return {"status": "ok", "interview_status": iv.status}
