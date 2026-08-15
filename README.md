@@ -179,9 +179,4 @@ cd easymeeting/easymeeting-front && npm run dev
 
 ---
 
-## 项目规划
-
-项目当前以**实际上线**为目标推进。
----
-
 

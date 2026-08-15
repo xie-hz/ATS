@@ -1,0 +1,248 @@
+# ============================================================================
+# ATS + EasyMeeting 生产部署编排（单机全栈）
+#
+# 用法:
+#   cp .env.example .env   # 修改域名 / 密码 / SMTP / 公网IP 等配置
+#   docker compose -f compose.prod.yml up -d --build
+#
+# 端口:
+#   80    ATS 前端（管理后台 + 候选人门户）
+#   8000  ATS 后端 API（/docs 为 Swagger）
+#   8080  EasyMeeting Web 客户端
+#   6060  EasyMeeting HTTP API（Electron 桌面端直连）
+#   6061  EasyMeeting WebSocket 信令（Electron 桌面端直连）
+#   9000/9001 MinIO API / 控制台
+#   3478 + 49152-65535/UDP  coturn TURN（host 网络）
+#
+# 如需 HTTPS / 域名，在此之上再加 Traefik 或宿主机 Nginx 反代即可。
+# ============================================================================
+
+name: ats-prod
+
+services:
+
+  # ---------------------------- ATS：基础设施 ----------------------------
+
+  db:
+    image: postgres:18
+    restart: always
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?需在 .env 设置}
+      - POSTGRES_USER=${POSTGRES_USER?需在 .env 设置}
+      - POSTGRES_DB=${POSTGRES_DB?需在 .env 设置}
+    volumes:
+      - app-db-data:/var/lib/postgresql/data/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+
+  redis:
+    image: redis:7
+    restart: always
+    # ATS 用 db0（celery/缓存），EasyMeeting 用 db1（compose 中 SPRING_REDIS_DATABASE 指定）
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+  minio:
+    image: minio/minio
+    restart: always
+    command: server /data --console-address ":9001"
+    volumes:
+      - app-minio-data:/data
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  # EasyMeeting 的 MySQL（ATS 用 PostgreSQL，两者独立）
+  mysql:
+    image: mysql:8.4
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD?需在 .env 设置}
+      - MYSQL_DATABASE=easymeeting
+      - TZ=Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - em-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      retries: 10
+      start_period: 60s
+      timeout: 5s
+
+  # ---------------------------- ATS：应用 ----------------------------
+
+  # 首次启动/升级时跑数据库迁移 + 初始化超管
+  prestart:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: bash scripts/prestart.sh
+    env_file: .env
+    environment:
+      - POSTGRES_SERVER=db
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
+      - EASYMEETING_API_URL=http://easymeeting-java:6060/api/openapi/meeting
+      - EASYMEETING_API_KEY=${EASYMEETING_API_KEY:-ats-easymeeting-secret-key}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: always
+    env_file: .env
+    environment:
+      - POSTGRES_SERVER=db
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
+      - TZ=Asia/Shanghai
+      # 容器网络内直连 EasyMeeting Java 服务
+      - EASYMEETING_API_URL=http://easymeeting-java:6060/api/openapi/meeting
+      - EASYMEETING_API_KEY=${EASYMEETING_API_KEY:-ats-easymeeting-secret-key}
+      - EASYMEETING_HOST_USER_ID=${EASYMEETING_HOST_USER_ID:-HR_DEFAULT}
+      # 面试邮件里的入会链接（对外的 Web 客户端地址）
+      - EASYMEETING_WEB_URL=${EASYMEETING_WEB_URL:-http://localhost:8080}
+    volumes:
+      # STORAGE_BACKEND=local 时简历等文件落在这里，必须持久化
+      # （生产建议 STORAGE_BACKEND=minio）
+      - app-uploads:/app/backend/uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      prestart:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: always
+    command: celery -A app.core.celery worker -l info
+    env_file: .env
+    environment:
+      - POSTGRES_SERVER=db
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: always
+    command: celery -A app.core.celery beat -l info
+    env_file: .env
+    environment:
+      - POSTGRES_SERVER=db
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - celery_worker
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # 前端调用的后端公网地址（浏览器可达）
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_started
+
+  # ---------------------------- EasyMeeting ----------------------------
+
+  easymeeting-java:
+    build:
+      context: ./easymeeting/easymeeting-java
+    restart: always
+    environment:
+      # Spring 环境变量覆盖 application.properties
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/easymeeting?serverTimezone=GMT%2B8&useUnicode=true&characterEncoding=utf8&autoReconnect=true&allowMultiQueries=true&useSSL=false
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_DATABASE=1
+      - TZ=Asia/Shanghai
+      # 生产日志级别（application.properties 默认 debug）
+      - LOG_ROOT_LEVEL=${EM_LOG_LEVEL:-info}
+      # 会议结束/取消时回调 ATS（容器网络内直连）
+      - ATS_WEBHOOK_URL=http://backend:8000/api/v1/integrations/easymeeting/webhook
+      # 开放接口 API Key，须与 ATS 的 EASYMEETING_API_KEY 一致
+      - OPENAPI_APIKEY=${EASYMEETING_API_KEY:-ats-easymeeting-secret-key}
+      # 浏览器端来源（对外的 Web 客户端地址）
+      - WEB_CORS_ORIGINS=${EASYMEETING_WEB_CORS_ORIGINS:-http://localhost:8080}
+      - ADMIN_EMAILS=${EM_ADMIN_EMAILS:-admin@qq.com}
+      # 上传目录（头像等），对应挂载卷
+      - PROJECT_FOLDER=/data
+    volumes:
+      - em-app-data:/data
+    ports:
+      - "6060:6060"   # HTTP API（Electron 桌面端直连）
+      - "6061:6061"   # WebSocket 信令（Electron 桌面端直连）
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  easymeeting-web:
+    build:
+      context: ./easymeeting/easymeeting-web
+      args:
+        - VITE_STUN_URL=${VITE_STUN_URL:-stun:stun.l.google.com:19302}
+        - VITE_TURN_URL=${VITE_TURN_URL:-}
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - easymeeting-java
+
+  # TURN 中继：对称型 NAT 下 WebRTC 打不通时兜底
+  # 需先修改 easymeeting/turnserver.conf（<PUBLIC_IP> / <REALM>），
+  # 并在安全组放行 3478(UDP/TCP) + 49152-65535(UDP)
+  coturn:
+    image: coturn/coturn:latest
+    restart: always
+    network_mode: host
+    volumes:
+      - ./easymeeting/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+
+volumes:
+  app-db-data:
+  app-minio-data:
+  app-uploads:
+  redis-data:
+  em-mysql-data:
+  em-app-data:
